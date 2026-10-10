@@ -63,3 +63,16 @@ A shapefile holds one geometry type. If a share mixes types, one shapefile per t
 go vet ./...
 go test ./...
 ```
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request:
+
+| Job | What it does |
+| --- | --- |
+| Format, tidy and vet | `gofmt`, `go mod tidy -diff`, `go mod verify`, `go vet` |
+| Test | `go test` on Linux (with the race detector and coverage) and Windows |
+| Vulnerability scan | `govulncheck` |
+| Build | Cross-compiles for Windows, Linux and macOS and uploads the binaries as artifacts |
+
+Pushing a tag such as `v1.0.0` also publishes those binaries, with checksums, as a GitHub release once every job has passed.
