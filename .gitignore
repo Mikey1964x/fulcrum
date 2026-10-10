@@ -1,0 +1,8 @@
+# Local settings and credentials
+.env
+
+# Build output
+/bin/
+
+# Downloaded and converted data
+/data/
