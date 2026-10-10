@@ -13,6 +13,8 @@ import (
 	"github.com/mikey1964x/fulcrum/pkg/geojson"
 )
 
+// decode parses the FeatureCollection doc into features, failing the test on
+// a decoding error.
 func decode(t *testing.T, doc string) []*geojson.Feature {
 	t.Helper()
 	var feats []*geojson.Feature
@@ -26,6 +28,9 @@ func decode(t *testing.T, doc string) []*geojson.Feature {
 	return feats
 }
 
+// TestDBFNames checks column naming on property names taken from a real
+// share: truncation, collision suffixes, case-insensitive uniqueness and
+// sanitising of characters a DBF name cannot hold.
 func TestDBFNames(t *testing.T) {
 	keys := []string{
 		"fulcrum_id", "xfmr_photo_caption", "xfmr_photo", "xfmr_photo_url",
@@ -50,6 +55,9 @@ func TestDBFNames(t *testing.T) {
 	}
 }
 
+// TestInferFields checks the inferred type and width of text, integer,
+// decimal, mixed, all-null and boolean properties, and that a property first
+// seen in a later feature still gets a column.
 func TestInferFields(t *testing.T) {
 	feats := decode(t, `{"type":"FeatureCollection","features":[
 		{"type":"Feature","properties":{"id":"a","version":3,"lat":33.75698091,"mixed":1,"empty":null,"kva":"75","flag":true},"geometry":null},
@@ -71,6 +79,8 @@ func TestInferFields(t *testing.T) {
 	}
 }
 
+// TestTruncateKeepsRunesWhole checks that truncation never cuts a multi-byte
+// UTF-8 character in half.
 func TestTruncateKeepsRunesWhole(t *testing.T) {
 	got, cut := truncate("abcé", 4) // é is two bytes
 	if got != "abc" || !cut {
@@ -81,6 +91,9 @@ func TestTruncateKeepsRunesWhole(t *testing.T) {
 	}
 }
 
+// mixedDoc is a collection with two points (one carrying a Z ordinate and an
+// over-long text value), a line, a polygon with a hole, and a feature without
+// geometry.
 var mixedDoc = `{"type":"FeatureCollection","features":[
 	{"type":"Feature","properties":{"name":"Café","count":7,"value":1.25,"note":null},"geometry":{"type":"Point","coordinates":[-78.5,33.25]}},
 	{"type":"Feature","properties":{"name":"` + longText + `","count":-120,"value":10,"note":"n"},"geometry":{"type":"Point","coordinates":[-79,34,12.5]}},
@@ -89,8 +102,12 @@ var mixedDoc = `{"type":"FeatureCollection","features":[
 	{"type":"Feature","properties":{"name":"nowhere","count":3,"value":3,"note":null},"geometry":null}
 ]}`
 
+// longText is a value longer than a DBF text column can hold.
 var longText = strings.Repeat("x", 300)
 
+// TestWriteMixedGeometries writes mixedDoc and reads the result back with an
+// independent shapefile reader, checking the per-type files, geometries,
+// attributes, truncation, skipped features and polygon ring winding.
 func TestWriteMixedGeometries(t *testing.T) {
 	dir := t.TempDir()
 	sum, err := Write(decode(t, mixedDoc), dir, "t")
@@ -192,6 +209,8 @@ func TestWriteMixedGeometries(t *testing.T) {
 	}
 }
 
+// ringArea returns the signed area of a closed ring: positive when it runs
+// counter-clockwise, negative when clockwise.
 func ringArea(pts []shp.Point) float64 {
 	var sum float64
 	for i := 0; i+1 < len(pts); i++ {
@@ -200,6 +219,9 @@ func ringArea(pts []shp.Point) float64 {
 	return sum / 2
 }
 
+// TestWriteSingleGeometryType checks that a collection of one geometry type
+// is written without a type suffix, with a WGS 84 .prj and a field map that
+// traces a renamed column.
 func TestWriteSingleGeometryType(t *testing.T) {
 	dir := t.TempDir()
 	feats := decode(t, `{"type":"FeatureCollection","features":[
@@ -225,6 +247,8 @@ func TestWriteSingleGeometryType(t *testing.T) {
 	}
 }
 
+// TestWriteNothingUsable checks that Write fails rather than producing an
+// empty shapefile when no feature has a geometry.
 func TestWriteNothingUsable(t *testing.T) {
 	feats := decode(t, `{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"a":1},"geometry":null}]}`)
 	if _, err := Write(feats, t.TempDir(), "x"); err == nil {

@@ -1,5 +1,37 @@
 // Command fulcrum downloads the GeoJSON of a Fulcrum data share and converts
 // it to an Esri shapefile.
+//
+// Usage:
+//
+//	fulcrum [flags]
+//
+// The flags are:
+//
+//	-env file
+//		Path of the .env file with the settings (default ".env").
+//	-out dir
+//		Output directory (default: FULCRUM_OUTPUT_DIR, or "data").
+//	-name basename
+//		Base name of the output files (default: the share token).
+//	-keep-geojson
+//		Also save the downloaded GeoJSON (default true).
+//
+// The share to download is configured through environment variables, which
+// are usually set in the .env file:
+//
+//	FULCRUM_SHARE_URL    the .geojson link of the data share (required)
+//	FULCRUM_USERNAME     Fulcrum login, sent only if the server asks for it
+//	FULCRUM_PASSWORD     password for that login
+//	FULCRUM_OUTPUT_DIR   output directory
+//
+// Every page of the share is downloaded and written to the output directory
+// as <name>.shp with its .shx, .dbf, .prj and .cpg companions, plus
+// <name>_fields.csv, which maps the shapefile's shortened column names back
+// to the Fulcrum field names. If the share mixes geometry types, one
+// shapefile per type is written.
+//
+// Progress is reported on standard error and a summary on standard output.
+// The exit status is 0 on success and 1 on any error.
 package main
 
 import (
@@ -19,6 +51,7 @@ import (
 	"github.com/mikey1964x/fulcrum/pkg/shapefile"
 )
 
+// main runs the command and exits with status 1 if it fails.
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -26,6 +59,9 @@ func main() {
 	}
 }
 
+// run parses the flags, loads the configuration, downloads the share,
+// converts it and prints the summary. Interrupting the process (Ctrl+C)
+// cancels a download in progress.
 func run() error {
 	envPath := flag.String("env", ".env", "path of the .env file")
 	outDir := flag.String("out", "", "output directory (default: FULCRUM_OUTPUT_DIR or \"data\")")

@@ -12,12 +12,21 @@ import (
 
 // Limits of the dBASE table that carries a shapefile's attributes.
 const (
-	maxNameLen    = 10
-	maxTextWidth  = 254
-	maxIntWidth   = 18
+	// maxNameLen is the longest column name, in bytes.
+	maxNameLen = 10
+
+	// maxTextWidth is the widest text column, in bytes.
+	maxTextWidth = 254
+
+	// maxIntWidth is the widest integer column; wider integers are stored
+	// as text so no digits are lost.
+	maxIntWidth = 18
+
+	// maxFloatWidth is the widest decimal column, sign and point included.
 	maxFloatWidth = 31
 
-	// A float64 carries 15 reliable significant digits; printing more only
+	// maxSignificant is the number of significant digits kept for decimal
+	// values. A float64 carries 15 reliable ones; printing more only
 	// exposes binary rounding noise (33.75698091 as 33.756980910000003).
 	maxSignificant = 15
 )
@@ -25,12 +34,20 @@ const (
 // FieldType is the kind of DBF column a property is stored in.
 type FieldType int
 
+// The column types the converter produces.
 const (
+	// Text is a character column ("C"), left-aligned and space-padded.
 	Text FieldType = iota
+
+	// Integer is a numeric column ("N") without decimals.
 	Integer
+
+	// Float is a numeric column ("N") with a fixed number of decimals.
 	Float
 )
 
+// String returns the lower-case name of the type, as written to the field
+// map CSV.
 func (t FieldType) String() string {
 	switch t {
 	case Integer:
@@ -44,27 +61,43 @@ func (t FieldType) String() string {
 
 // Field describes one DBF column and the GeoJSON property it comes from.
 type Field struct {
-	Name     string // DBF column name, at most 10 characters
-	Source   string // original property name
-	Type     FieldType
-	Width    int
+	// Name is the DBF column name: at most 10 characters and unique within
+	// the table, ignoring case.
+	Name string
+
+	// Source is the original GeoJSON property name.
+	Source string
+
+	// Type is the kind of column.
+	Type FieldType
+
+	// Width is the column width in bytes.
+	Width int
+
+	// Decimals is the number of digits after the decimal point. It is zero
+	// unless Type is Float.
 	Decimals int
 }
 
+// fieldStats accumulates what InferFields has seen of one property across
+// all features.
 type fieldStats struct {
 	seen     bool // at least one non-null value
-	numeric  bool
-	integer  bool
-	textLen  int
-	whole    int // widest integer part, sign included
-	digits   int // most digits in an integer part
-	decimals int
+	numeric  bool // every non-null value so far is a finite number
+	integer  bool // every number so far is an integer literal
+	textLen  int  // longest value as text, in bytes
+	whole    int  // widest integer part, sign included
+	digits   int  // most digits in an integer part
+	decimals int  // most digits after the decimal point
 }
 
 // InferFields builds the table schema from the values actually present:
 // columns appear in first-seen order, a column is numeric only if every
 // non-null value is a number, and text columns are as wide as their longest
 // value (up to the DBF limit).
+//
+// A property that is null in every feature becomes a text column of width 1.
+// Booleans and nested arrays or objects are stored as text.
 func InferFields(features []*geojson.Feature) []Field {
 	var keys []string
 	stats := make(map[string]*fieldStats)
@@ -88,6 +121,8 @@ func InferFields(features []*geojson.Feature) []Field {
 	return fields
 }
 
+// observe folds one value of the property into the statistics. A nil value
+// (JSON null) carries no information and is ignored.
 func (st *fieldStats) observe(v any) {
 	if v == nil {
 		return
@@ -117,6 +152,9 @@ func (st *fieldStats) observe(v any) {
 	st.decimals = max(st.decimals, len(frac))
 }
 
+// field turns the statistics into the column definition for the property
+// source, stored under the DBF name. Numbers too wide for a numeric column
+// fall back to text.
 func (st *fieldStats) field(name, source string) Field {
 	fld := Field{Name: name, Source: source, Type: Text}
 	decimals := min(st.decimals, max(maxSignificant-st.digits, 0))
@@ -136,8 +174,9 @@ func (st *fieldStats) field(name, source string) Field {
 	return fld
 }
 
-// format renders v for this column. The second result reports that the value
-// did not fit and was cut.
+// format renders v for this column, without padding. A nil value renders as
+// the empty string, which leaves the cell blank. The second result reports
+// that the value did not fit and was cut.
 func (f Field) format(v any) (string, bool) {
 	if v == nil {
 		return "", false
@@ -153,6 +192,9 @@ func (f Field) format(v any) (string, bool) {
 	return truncate(s, f.Width)
 }
 
+// textOf returns v as it is stored in a text column: strings unchanged,
+// numbers as their JSON literal, booleans as "true" or "false", and arrays
+// and objects as compact JSON.
 func textOf(v any) string {
 	switch x := v.(type) {
 	case nil:
@@ -172,11 +214,14 @@ func textOf(v any) string {
 	}
 }
 
+// isIntLiteral reports whether the JSON number literal s is written as an
+// integer, with no fraction or exponent.
 func isIntLiteral(s string) bool {
 	return s != "" && !strings.ContainsAny(s, ".eE")
 }
 
 // truncate cuts s to at most width bytes without splitting a UTF-8 sequence.
+// It reports whether anything was cut.
 func truncate(s string, width int) (string, bool) {
 	if len(s) <= width {
 		return s, false
@@ -221,6 +266,10 @@ func dbfNames(keys []string) []string {
 	return names
 }
 
+// sanitizeName makes key safe as a DBF column name, without shortening it:
+// characters other than ASCII letters, digits and underscore become
+// underscores, an empty name becomes "field", and a leading digit is
+// prefixed with "f".
 func sanitizeName(key string) string {
 	var b strings.Builder
 	for _, r := range key {

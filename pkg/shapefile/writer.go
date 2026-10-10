@@ -1,4 +1,20 @@
 // Package shapefile converts GeoJSON features into Esri shapefiles.
+//
+// [Write] is the entry point. For each geometry type present it produces the
+// files that together make up one shapefile:
+//
+//   - .shp: the geometries
+//   - .shx: the index of record offsets into the .shp file
+//   - .dbf: the attribute table, in dBASE format
+//   - .prj: the coordinate system, WGS 84
+//   - .cpg: the text encoding of the table, UTF-8
+//
+// The attribute table is where the format is restrictive: column names are
+// limited to 10 characters and text values to 254 bytes. [InferFields]
+// derives a table schema that fits, and Write records the mapping from
+// column names back to the original property names in a CSV file.
+//
+// Only two-dimensional geometries are written; any Z ordinate is dropped.
 package shapefile
 
 import (
@@ -25,11 +41,21 @@ const (
 	shpMultiPoint int32 = 8
 )
 
+// Sizes and limits of the file formats.
 const (
-	shpHeaderLen  = 100
-	maxDBFFields  = 255
-	maxDBFRecord  = 65535
-	maxShpFileLen = math.MaxInt32 * 2 // the header stores the length in 16-bit words
+	// shpHeaderLen is the length in bytes of the .shp and .shx file header.
+	shpHeaderLen = 100
+
+	// maxDBFFields is the largest number of columns in an attribute table.
+	maxDBFFields = 255
+
+	// maxDBFRecord is the longest attribute record in bytes; the DBF header
+	// stores the record length in 16 bits.
+	maxDBFRecord = 65535
+
+	// maxShpFileLen is the largest .shp file in bytes; the header stores
+	// the length as a signed 32-bit count of 16-bit words.
+	maxShpFileLen = math.MaxInt32 * 2
 )
 
 // wgs84 is the coordinate system GeoJSON mandates, in the WKT form ArcGIS
@@ -38,37 +64,69 @@ const wgs84 = `GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378
 
 // Output describes one shapefile that was written.
 type Output struct {
-	Path     string // path of the .shp file
+	// Path is the path of the .shp file; the companion files sit next to
+	// it under the same base name.
+	Path string
+
+	// Geometry is the shape type of the file: "Point", "MultiPoint",
+	// "PolyLine" or "Polygon".
 	Geometry string
+
+	// Features is the number of records in the file.
 	Features int
 }
 
 // Summary is the result of a conversion.
 type Summary struct {
-	Outputs   []Output
-	Fields    []Field
-	FieldMap  string // path of the CSV mapping DBF names to property names
-	Skipped   int    // features without a usable geometry
-	Truncated int    // attribute values cut to fit their column
+	// Outputs lists the shapefiles written, one per geometry type present.
+	Outputs []Output
+
+	// Fields is the attribute table schema shared by all outputs.
+	Fields []Field
+
+	// FieldMap is the path of the CSV mapping DBF column names to the
+	// original property names.
+	FieldMap string
+
+	// Skipped is the number of features left out because they had no
+	// geometry, or one that could not be converted.
+	Skipped int
+
+	// Truncated is the number of attribute values cut to fit their column.
+	Truncated int
 }
 
+// shape is a geometry in the shapefile's own terms: a flat list of points,
+// divided into parts (lines or rings).
 type shape struct {
-	points  [][2]float64
-	parts   []int32
-	invalid bool // a position had fewer than two ordinates
+	points  [][2]float64 // x, y of every point, part after part
+	parts   []int32      // index into points of the first point of each part
+	invalid bool         // a position had fewer than two ordinates
 }
 
+// group collects the features that go into one shapefile.
 type group struct {
-	suffix    string
-	label     string
-	shapeType int32
-	features  []*geojson.Feature
-	shapes    []shape
+	suffix    string             // file name suffix used when types are mixed
+	label     string             // shape type name reported in the Summary
+	shapeType int32              // shape type code written to the file
+	features  []*geojson.Feature // the features, in input order
+	shapes    []shape            // the converted geometry of each feature
 }
 
 // Write converts features into shapefiles under dir. A shapefile holds a
 // single geometry type, so when the features mix types one file per type is
 // written (<name>_point, <name>_line, ...); otherwise the file is just <name>.
+//
+// GeoJSON geometry types map to shape types as follows: Point to Point,
+// MultiPoint to MultiPoint, LineString and MultiLineString to PolyLine, and
+// Polygon and MultiPolygon to Polygon. Features with no geometry, or with one
+// that cannot be converted (such as a GeometryCollection), are skipped and
+// counted in the Summary. All outputs share one table schema, inferred from
+// every feature.
+//
+// The directory dir must exist; existing files of the same names are
+// overwritten. Write returns an error if no feature can be written, if the
+// data exceeds a limit of the format, or if a file cannot be written.
 func Write(features []*geojson.Feature, dir, name string) (*Summary, error) {
 	groups := []*group{
 		{suffix: "point", label: "Point", shapeType: shpPoint},
@@ -137,8 +195,10 @@ func Write(features []*geojson.Feature, dir, name string) (*Summary, error) {
 	return sum, nil
 }
 
-// toShape converts a GeoJSON geometry to shapefile parts and points. Only
-// the first two ordinates of a position are used.
+// toShape converts a GeoJSON geometry to shapefile parts and points, and
+// returns the shape type code it belongs under. Only the first two ordinates
+// of a position are used. It returns an error for a nil geometry, an
+// unsupported type, malformed coordinates, or a geometry with no points.
 func toShape(g *geojson.Geometry) (int32, shape, error) {
 	if g == nil {
 		return 0, shape{}, errors.New("no geometry")
@@ -201,6 +261,9 @@ func toShape(g *geojson.Geometry) (int32, shape, error) {
 	return shapeType, s, nil
 }
 
+// addPart appends positions to the shape as a new part. An empty part is
+// ignored. A position with fewer than two ordinates, or a NaN ordinate,
+// marks the shape invalid.
 func (s *shape) addPart(positions [][]float64) {
 	if len(positions) == 0 {
 		return
@@ -217,6 +280,9 @@ func (s *shape) addPart(positions [][]float64) {
 
 // addPolygon adds the rings of one GeoJSON polygon in shapefile winding:
 // the outer ring clockwise and holes counter-clockwise, each ring closed.
+// The first ring is the outer one and the rest are holes, as GeoJSON
+// requires. Rings with fewer than three positions are dropped. The caller's
+// slices are not modified.
 func (s *shape) addPolygon(rings [][][]float64) {
 	for i, ring := range rings {
 		if len(ring) < 3 {
@@ -237,7 +303,9 @@ func (s *shape) addPolygon(rings [][][]float64) {
 	}
 }
 
-// signedArea is positive for a counter-clockwise ring.
+// signedArea returns the area enclosed by ring, computed with the shoelace
+// formula. It is positive for a counter-clockwise ring and negative for a
+// clockwise one. It returns 0 if a position has fewer than two ordinates.
 func signedArea(ring [][]float64) float64 {
 	var sum float64
 	for i := 0; i+1 < len(ring); i++ {
@@ -249,17 +317,22 @@ func signedArea(ring [][]float64) float64 {
 	return sum / 2
 }
 
+// bbox is the bounding box of a shape or of a whole file.
 type bbox struct{ minX, minY, maxX, maxY float64 }
 
+// extend grows the box to include the point p.
 func (b *bbox) extend(p [2]float64) {
 	b.minX, b.maxX = math.Min(b.minX, p[0]), math.Max(b.maxX, p[0])
 	b.minY, b.maxY = math.Min(b.minY, p[1]), math.Max(b.maxY, p[1])
 }
 
+// emptyBBox returns a box that contains nothing, ready to be extended.
 func emptyBBox() bbox {
 	return bbox{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
 }
 
+// append appends the box to buf in the file layout: Xmin, Ymin, Xmax, Ymax
+// as little-endian doubles.
 func (b bbox) append(buf []byte) []byte {
 	for _, v := range [...]float64{b.minX, b.minY, b.maxX, b.maxY} {
 		buf = appendFloat(buf, v)
@@ -267,11 +340,20 @@ func (b bbox) append(buf []byte) []byte {
 	return buf
 }
 
+// appendFloat appends v to buf as a little-endian IEEE 754 double.
 func appendFloat(buf []byte, v float64) []byte {
 	return binary.LittleEndian.AppendUint64(buf, math.Float64bits(v))
 }
 
 // appendContent appends the record content of s, without the record header.
+// The layout depends on the shape type:
+//
+//	Point:      type, x, y
+//	MultiPoint: type, box, point count, points
+//	PolyLine:   type, box, part count, point count, part offsets, points
+//	Polygon:    as PolyLine, each part being a ring
+//
+// All values are little-endian.
 func appendContent(buf []byte, shapeType int32, s shape) []byte {
 	buf = binary.LittleEndian.AppendUint32(buf, uint32(shapeType))
 	if shapeType == shpPoint {
@@ -299,7 +381,12 @@ func appendContent(buf []byte, shapeType int32, s shape) []byte {
 	return buf
 }
 
-// writeShapes writes the geometry file (.shp) and its index (.shx).
+// writeShapes writes the geometry file (.shp) and its index (.shx) for the
+// files named base. Each .shp record is an 8-byte big-endian header (record
+// number from 1, content length in 16-bit words) followed by the content;
+// each .shx record gives the offset and content length of the matching .shp
+// record, also in 16-bit words. The file headers are written last, once the
+// total length and extent are known.
 func writeShapes(base string, shapeType int32, shapes []shape) (err error) {
 	shp, err := os.Create(base + ".shp")
 	if err != nil {
@@ -354,6 +441,10 @@ func writeShapes(base string, shapeType int32, shapes []shape) (err error) {
 	return err
 }
 
+// shpHeader builds the 100-byte header shared by .shp and .shx files: the
+// file code 9994 and the length in 16-bit words (big-endian), then the
+// version 1000, the shape type and the bounding box (little-endian). fileLen
+// is the length in bytes of the file the header is for.
 func shpHeader(shapeType int32, fileLen int64, box bbox) []byte {
 	h := make([]byte, 0, shpHeaderLen)
 	h = binary.BigEndian.AppendUint32(h, 9994)
@@ -367,6 +458,13 @@ func shpHeader(shapeType int32, fileLen int64, box bbox) []byte {
 
 // writeDBF writes the attribute table and returns how many values were
 // truncated to fit their column.
+//
+// The file is a dBASE III table: a 32-byte header, a 32-byte descriptor per
+// column, a 0x0D terminator, then one fixed-length record per feature and a
+// 0x1A end-of-file mark. A record starts with a space (not deleted) and
+// holds each column at its fixed width: text left-aligned, numbers
+// right-aligned, both padded with spaces. A null or missing value leaves the
+// cell blank.
 func writeDBF(path string, fields []Field, features []*geojson.Feature) (truncated int, err error) {
 	recordLen := 1
 	offsets := make(map[string]int, len(fields))
@@ -438,6 +536,8 @@ func writeDBF(path string, fields []Field, features []*geojson.Feature) (truncat
 	return truncated, w.Flush()
 }
 
+// writeFieldMap writes the CSV that documents the table schema: one row per
+// column with its DBF name, source property, type, width and decimals.
 func writeFieldMap(path string, fields []Field) (err error) {
 	file, err := os.Create(path)
 	if err != nil {
@@ -454,6 +554,8 @@ func writeFieldMap(path string, fields []Field) (err error) {
 }
 
 // closeFile closes f and keeps the close error if nothing failed earlier.
+// It is meant to be deferred with the address of a named error result, so a
+// failure to flush data to disk on close is not lost.
 func closeFile(f *os.File, err *error) {
 	if cerr := f.Close(); cerr != nil && *err == nil {
 		*err = cerr

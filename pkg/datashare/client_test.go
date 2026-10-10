@@ -11,6 +11,7 @@ import (
 	"testing"
 )
 
+// init removes the pause between attempts so the retry tests run instantly.
 func init() { retryDelay = 0 }
 
 // collection renders a FeatureCollection of point features with the given ids.
@@ -22,6 +23,9 @@ func collection(ids ...string) string {
 	return `{"type":"FeatureCollection","features":[` + strings.Join(feats, ",") + `]}`
 }
 
+// TestDownloadFollowsPages checks that every page is fetched and merged, that
+// paging stops after the first short page, and that the sink receives one
+// valid FeatureCollection.
 func TestDownloadFollowsPages(t *testing.T) {
 	var requests []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +68,8 @@ func TestDownloadFollowsPages(t *testing.T) {
 	}
 }
 
+// TestDownloadStopsAfterEmptyPage checks that a share fitting in one page
+// ends at the empty second page, which is not counted.
 func TestDownloadStopsAfterEmptyPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "1" {
@@ -83,6 +89,8 @@ func TestDownloadStopsAfterEmptyPage(t *testing.T) {
 	}
 }
 
+// TestDownloadStopsWhenServerIgnoresPaging checks that a server returning the
+// same records for every page does not cause an endless loop or duplicates.
 func TestDownloadStopsWhenServerIgnoresPaging(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +108,8 @@ func TestDownloadStopsWhenServerIgnoresPaging(t *testing.T) {
 	}
 }
 
+// TestDownloadNotFound checks that HTTP 404 on the first page is reported as
+// a missing share.
 func TestDownloadNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
@@ -110,6 +120,9 @@ func TestDownloadNotFound(t *testing.T) {
 	}
 }
 
+// TestDownloadSendsCredentialsOnlyWhenRefused checks the Basic auth fallback:
+// the first request is anonymous, credentials follow a 401, and missing or
+// wrong credentials produce a clear error.
 func TestDownloadSendsCredentialsOnlyWhenRefused(t *testing.T) {
 	var sawAuth []bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +163,8 @@ func TestDownloadSendsCredentialsOnlyWhenRefused(t *testing.T) {
 	}
 }
 
+// TestDownloadRetriesServerError checks that a page failing with a 5xx
+// response is requested again.
 func TestDownloadRetriesServerError(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +190,8 @@ func TestDownloadRetriesServerError(t *testing.T) {
 	}
 }
 
+// TestDownloadRejectsHTML checks that an HTML response, such as a sign-in
+// page, is reported instead of being parsed as data.
 func TestDownloadRejectsHTML(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

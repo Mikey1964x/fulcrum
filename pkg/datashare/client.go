@@ -1,4 +1,14 @@
 // Package datashare downloads the GeoJSON of a Fulcrum data share.
+//
+// A data share is a link of the form
+// https://web.fulcrumapp.com/shares/<token>.geojson that returns an app's
+// records as a GeoJSON FeatureCollection. Fulcrum serves a share in pages
+// (20,000 records each, selected with the "page" query parameter), so the
+// [Client] requests page after page until the share is exhausted.
+//
+// The token in the link is normally the only access control. If the server
+// does refuse an anonymous request, the Client retries with HTTP Basic auth
+// when it has been given credentials.
 package datashare
 
 import (
@@ -19,16 +29,20 @@ import (
 // idProperty is the record identifier Fulcrum puts on every feature.
 const idProperty = "fulcrum_id"
 
-var (
-	errNotFound = errors.New("share not found")
+// errNotFound reports that the server answered HTTP 404 for a page.
+var errNotFound = errors.New("share not found")
 
-	// retryDelay is the pause before a failed page is requested again.
-	retryDelay = 2 * time.Second
-)
+// retryDelay is the pause before a failed page is requested again. It is a
+// variable so tests can remove the wait.
+var retryDelay = 2 * time.Second
 
 // Client downloads one data share. A share is served in pages, so a single
 // request for the share URL only returns the first part of a large share.
+//
+// A Client must not be used by multiple goroutines at once.
 type Client struct {
+	// URL is the .geojson link of the share. Any "page" query parameter in
+	// it is overwritten.
 	URL string
 
 	// Username and Password are optional. They are sent as HTTP Basic auth
@@ -36,19 +50,33 @@ type Client struct {
 	Username string
 	Password string
 
-	HTTP     *http.Client
+	// HTTP is the client used for requests. If nil, http.DefaultClient is
+	// used.
+	HTTP *http.Client
+
+	// Progress, if not nil, receives one line per downloaded page and a
+	// line for each retry.
 	Progress io.Writer
 
+	// useAuth records that the server has asked for credentials, so later
+	// requests send them straight away.
 	useAuth bool
 }
 
 // Result is the outcome of a download.
 type Result struct {
-	Features   []*geojson.Feature
-	Pages      int
+	// Features holds every record of the share, in the order served.
+	Features []*geojson.Feature
+
+	// Pages is the number of pages that contained records.
+	Pages int
+
+	// Duplicates is the number of records dropped because a record with
+	// the same fulcrum_id had already been received.
 	Duplicates int
 }
 
+// item is one feature of a page, in both its original and decoded form.
 type item struct {
 	raw     json.RawMessage
 	feature *geojson.Feature
@@ -57,11 +85,17 @@ type item struct {
 // retryable marks an error worth one more attempt.
 type retryable struct{ error }
 
+// Unwrap returns the wrapped error, for errors.Is and errors.As.
 func (r retryable) Unwrap() error { return r.error }
 
 // Download fetches every page of the share. If sink is not nil, the features
 // are also written to it as one merged FeatureCollection, byte for byte as
 // the server sent them.
+//
+// Paging ends at an empty page, at a page shorter than an earlier one, or at
+// a page that holds nothing new. Records are de-duplicated on fulcrum_id. A
+// failed page is retried once. If Download returns an error, whatever was
+// written to sink is incomplete and must be discarded.
 func (c *Client) Download(ctx context.Context, sink io.Writer) (*Result, error) {
 	res := &Result{}
 	seen := make(map[string]struct{})
@@ -122,6 +156,9 @@ func (c *Client) Download(ctx context.Context, sink io.Writer) (*Result, error) 
 	return res, nil
 }
 
+// fetchPageWithRetry fetches one page and, if that fails with a retryable
+// error, waits retryDelay and tries once more. It does not retry once ctx is
+// done.
 func (c *Client) fetchPageWithRetry(ctx context.Context, page int) ([]item, error) {
 	items, err := c.fetchPage(ctx, page)
 	var r retryable
@@ -137,6 +174,12 @@ func (c *Client) fetchPageWithRetry(ctx context.Context, page int) ([]item, erro
 	return c.fetchPage(ctx, page)
 }
 
+// fetchPage requests one page (numbered from 1) and decodes its features.
+//
+// On HTTP 401 or 403 it switches the Client to Basic auth and repeats the
+// request, provided credentials are set and have not already been refused.
+// It returns errNotFound for HTTP 404, and a retryable error for network
+// failures, 5xx responses and bodies that cannot be decoded.
 func (c *Client) fetchPage(ctx context.Context, page int) ([]item, error) {
 	u, err := url.Parse(c.URL)
 	if err != nil {
@@ -188,6 +231,9 @@ func (c *Client) fetchPage(ctx context.Context, page int) ([]item, error) {
 	}
 }
 
+// decodePage reads the features of a successful response. It does not close
+// the body. An HTML response is rejected outright, since it is a login or
+// error page rather than data.
 func decodePage(resp *http.Response) ([]item, error) {
 	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "html") {
 		return nil, fmt.Errorf("expected GeoJSON but the server sent %s (a login or error page?)", ct)
@@ -204,6 +250,7 @@ func decodePage(resp *http.Response) ([]item, error) {
 	return items, nil
 }
 
+// httpClient returns c.HTTP, or http.DefaultClient if it is nil.
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
@@ -211,12 +258,14 @@ func (c *Client) httpClient() *http.Client {
 	return http.DefaultClient
 }
 
+// progressf writes a formatted message to c.Progress, if one is set.
 func (c *Client) progressf(format string, args ...any) {
 	if c.Progress != nil {
 		fmt.Fprintf(c.Progress, format, args...)
 	}
 }
 
+// writeSink writes parts to sink in order. A nil sink discards them.
 func writeSink(sink io.Writer, parts ...string) error {
 	if sink == nil {
 		return nil
