@@ -4,7 +4,8 @@
 // The settings are read from these variables:
 //
 //   - FULCRUM_SHARE_URL: the .geojson link of the data share (required).
-//   - FULCRUM_USERNAME, FULCRUM_PASSWORD: the Fulcrum login (optional).
+//   - FULCRUM_USERNAME, FULCRUM_PASSWORD: the Fulcrum login, for the share
+//     and its photos (optional).
 //   - FULCRUM_OUTPUT_DIR: where output files are written (default "data").
 //
 // A variable already set in the process environment takes precedence over
@@ -41,7 +42,7 @@ type Config struct {
 	ShareURL string
 
 	// Username and Password are the Fulcrum login. Both may be empty, since
-	// a data share is normally readable without one.
+	// a data share and its photos are normally readable without one.
 	Username string
 	Password string
 
