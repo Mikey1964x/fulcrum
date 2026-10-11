@@ -25,8 +25,8 @@ Variables already set in the environment take precedence over `.env`.
 
 ``` bash
 bin\fulcrum.exe [-env .env] [-out <dir>] [-name <basename>] [-keep-geojson=false] [-photos=false] [-photo-workers <n>]
-binulcrum.exe -help
-binulcrum.exe -version
+bin\fulcrum.exe -help
+bin\fulcrum.exe -version
 ```
 
 | Flag | Default | Meaning |
