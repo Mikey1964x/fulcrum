@@ -96,6 +96,18 @@ The **Download GeoJSON** button saves `<name>.geojson` to the computer the brows
 
 The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics and download the data.
 
+### Running the dashboard as a Windows service
+
+`scripts\install-service.ps1` installs the dashboard as a service named `FulcrumDashboard`, using [NSSM](https://nssm.cc). Run it from an elevated PowerShell, after building the command and downloading the share once:
+
+``` powershell
+scripts\install-service.ps1                # install and start, on localhost:8080
+scripts\install-service.ps1 -Addr :8080    # serve the network instead
+scripts\install-service.ps1 -Remove        # stop and remove the service
+```
+
+The service runs as `LOCAL SERVICE`, starts with Windows, and uses the executable's directory as its working directory. Output is logged there in `FulcrumDashboard.out.log` and `FulcrumDashboard.err.log`. The script grants `LOCAL SERVICE` read access to the executable directory (with write, for the logs), the `.env` file and the data directory, since that account cannot otherwise read a user's files.
+
 ## Shapefile limits
 
 - **Column names are at most 10 characters.** Longer Fulcrum field names are truncated, and names that would collide get a numeric suffix (`xfmr_photo`, `xfmr_pho_1`, `xfmr_pho_2`). `<name>_fields.csv` lists the mapping.
