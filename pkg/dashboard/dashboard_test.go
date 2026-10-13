@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mikey1964x/fulcrum/pkg/geojson"
 )
@@ -24,10 +25,10 @@ const (
 
 // records are the properties of the test share's features.
 var records = []string{
-	`{"status":"Inspection Complete","inspection_type":"Transformer","address_sub_admin_area":"Horry County","inspection_date":"2024-05-28","exterior":"Good","lock":"Lock in Place,\"Lock Missing, Replaced\"","xfmr_photo_url":"` + view + photoA + `%2C` + photoB + `"}`,
-	`{"status":"Inspection Complete","inspection_type":"Transformer","address_sub_admin_area":"Horry County","inspection_date":"2024-07-02","exterior":"Slight Rust","lock":"Lock in Place"}`,
-	`{"status":"Not Inspected","inspection_type":"Transformer","address_sub_admin_area":"Georgetown County","inspection_date":"2024-05-01","exterior":"Good","lock":null}`,
-	`{"status":"No Visual Access, Structure ","inspection_type":"Switch Gear","address_sub_admin_area":null,"inspection_date":null,"exterior":null}`,
+	`{"updated_at":"2026-03-01 10:00:00 UTC","status":"Inspection Complete","inspection_type":"Transformer","address_sub_admin_area":"Horry County","inspection_date":"2024-05-28","exterior":"Good","lock":"Lock in Place,\"Lock Missing, Replaced\"","xfmr_photo_url":"` + view + photoA + `%2C` + photoB + `"}`,
+	`{"updated_at":"2025-12-31 23:59:59 UTC","status":"Inspection Complete","inspection_type":"Transformer","address_sub_admin_area":"Horry County","inspection_date":"2024-07-02","exterior":"Slight Rust","lock":"Lock in Place"}`,
+	`{"updated_at":"2026-01-01 00:00:00 UTC","status":"Not Inspected","inspection_type":"Transformer","address_sub_admin_area":"Georgetown County","inspection_date":"2024-05-01","exterior":"Good","lock":null}`,
+	`{"updated_at":"2022-07-04 12:00:00 UTC","status":"No Visual Access, Structure ","inspection_type":"Switch Gear","address_sub_admin_area":null,"inspection_date":null,"exterior":null}`,
 }
 
 // testFeatures decodes records into features.
@@ -119,6 +120,26 @@ func TestComputeFilter(t *testing.T) {
 	}
 }
 
+func TestComputeYear(t *testing.T) {
+	fs := testFeatures(t)
+	for year, want := range map[string]int{"": 4, "2026": 2, "2025": 1, "2022": 1, "2024": 0, "202": 0} {
+		if st := Compute(fs, Filter{Year: year}); st.Total != want {
+			t.Errorf("year %q: %d units, want %d", year, st.Total, want)
+		}
+	}
+	// The year combines with the other filters.
+	if st := Compute(fs, Filter{Year: "2026", Status: "Not Inspected"}); st.Total != 1 || st.NotInspected != 1 {
+		t.Errorf("year+status: %+v", st)
+	}
+}
+
+func TestYears(t *testing.T) {
+	got := Years(time.Date(2026, time.October, 13, 0, 0, 0, 0, time.UTC))
+	if want := []string{"2026", "2025", "2024", "2023", "2022"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("years = %v, want %v", got, want)
+	}
+}
+
 func TestListOptions(t *testing.T) {
 	got := ListOptions(testFeatures(t))
 	want := Options{
@@ -203,6 +224,13 @@ func TestServerPageAndAPI(t *testing.T) {
 	}
 	if st.Total != 1 || st.NotInspected != 1 {
 		t.Errorf("stats = %+v", st)
+	}
+	_, body = get(t, srv, "/api/stats?year=2026")
+	if err := json.Unmarshal(body, &st); err != nil || st.Total != 2 {
+		t.Errorf("stats for 2026 = %+v, %v", st, err)
+	}
+	if len(info.Options.Years) != 5 || info.Options.Years[0] != time.Now().Format("2006") {
+		t.Errorf("years = %v", info.Options.Years)
 	}
 
 	// A new download of the share is picked up without a restart.

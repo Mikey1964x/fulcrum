@@ -79,7 +79,7 @@ type Info struct {
 //	GET /                   the page
 //	GET /api/info           an Info as JSON
 //	GET /api/stats          a Stats as JSON; the query parameters type,
-//	                        county and status filter the records
+//	                        county, status and year filter the records
 //	GET /download/geojson   the GeoJSON file
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -151,6 +151,9 @@ func (s *Server) serveInfo(w http.ResponseWriter, r *http.Request) {
 		Options:          s.options,
 	}
 	s.mu.Unlock()
+	// The years follow the clock, so they are worked out per request: a
+	// server left running over New Year then offers the new year.
+	info.Options.Years = Years(time.Now())
 	info.PhotosOnDisk = s.photoCount()
 	writeJSON(w, info)
 }
@@ -167,6 +170,7 @@ func (s *Server) serveStats(w http.ResponseWriter, r *http.Request) {
 		Type:   q.Get("type"),
 		County: q.Get("county"),
 		Status: q.Get("status"),
+		Year:   q.Get("year"),
 	}))
 }
 

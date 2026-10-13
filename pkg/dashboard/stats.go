@@ -12,16 +12,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mikey1964x/fulcrum/pkg/geojson"
 )
 
 // Names of the share's attributes the statistics are computed from.
 const (
-	propStatus = "status"
-	propType   = "inspection_type"
-	propCounty = "address_sub_admin_area"
-	propDate   = "inspection_date"
+	propStatus  = "status"
+	propType    = "inspection_type"
+	propCounty  = "address_sub_admin_area"
+	propDate    = "inspection_date"
+	propUpdated = "updated_at"
 )
 
 // Values of the status attribute that count as inspected and not inspected.
@@ -57,6 +59,10 @@ type Filter struct {
 
 	// Status is a record status, such as "Not Inspected".
 	Status string
+
+	// Year is a four-digit year, such as "2025". It selects the records
+	// that were last updated in that year, by their updated_at attribute.
+	Year string
 }
 
 // Count is the number of records with one value of an attribute.
@@ -121,6 +127,10 @@ type Options struct {
 	Types    []string `json:"types"`
 	Counties []string `json:"counties"`
 	Statuses []string `json:"statuses"`
+
+	// Years lists the years offered for Filter.Year, newest first. It is
+	// filled in by the server from [Years], not by ListOptions.
+	Years []string `json:"years"`
 }
 
 // text returns the trimmed string value of a property, or "" if it is
@@ -182,6 +192,29 @@ func ListOptions(features []*geojson.Feature) Options {
 	return Options{Types: keys(types), Counties: keys(counties), Statuses: keys(statuses)}
 }
 
+// yearsOffered is the number of years the dashboard offers to filter on: the
+// current year and the four before it.
+const yearsOffered = 5
+
+// Years returns the years a Filter can select at the time now: the current
+// year and the four before it, newest first. The list follows the calendar,
+// not the data, so a year without records is still offered.
+func Years(now time.Time) []string {
+	out := make([]string, yearsOffered)
+	for i := range out {
+		out[i] = strconv.Itoa(now.Year() - i)
+	}
+	return out
+}
+
+// updatedIn reports whether the record was last updated in year. Fulcrum
+// writes updated_at as "2023-02-20 14:46:14 UTC", so the year is its first
+// four characters.
+func updatedIn(f *geojson.Feature, year string) bool {
+	updated := text(f, propUpdated)
+	return len(updated) > len(year) && strings.HasPrefix(updated, year) && updated[len(year)] == '-'
+}
+
 // keys returns the keys of m in alphabetical order.
 func keys(m map[string]int) []string {
 	out := make([]string, 0, len(m))
@@ -211,7 +244,8 @@ func Compute(features []*geojson.Feature, filter Filter) *Stats {
 		county := orUnknown(text(f, propCounty))
 		if filter.Type != "" && filter.Type != typ ||
 			filter.County != "" && filter.County != county ||
-			filter.Status != "" && filter.Status != status {
+			filter.Status != "" && filter.Status != status ||
+			filter.Year != "" && !updatedIn(f, filter.Year) {
 			continue
 		}
 

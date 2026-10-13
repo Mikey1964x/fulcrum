@@ -166,6 +166,7 @@
   <div id="error" role="alert"></div>
 
   <div class="filters">
+    <label>Year <select id="f-year"></select></label>
     <label>Inspection type <select id="f-type"></select></label>
     <label>County <select id="f-county"></select></label>
     <label>Status <select id="f-status"></select></label>
@@ -328,7 +329,7 @@ function monthColumns(months) {
 // ---- page ------------------------------------------------------------
 
 const grid = document.getElementById("grid");
-const selects = { type: document.getElementById("f-type"), county: document.getElementById("f-county"), status: document.getElementById("f-status") };
+const selects = { year: document.getElementById("f-year"), type: document.getElementById("f-type"), county: document.getElementById("f-county"), status: document.getElementById("f-status") };
 let info = null;
 
 function fail(message) {
@@ -355,6 +356,11 @@ function tile(label, value, note) {
 function render(s) {
   const filtered = Object.values(selects).some(x => x.value);
   const scope = filtered ? "of the selected units" : "of all units";
+  const year = selects.year.value;
+  const others = [selects.type, selects.county, selects.status].some(x => x.value);
+  let counted = "Counts for the whole share.";
+  if (year) counted = `Counts for the units last updated in ${year}${others ? ", with the selected filters" : ""}. Photos are for the whole share.`;
+  else if (others) counted = "Counts for the selected filters. Photos are for the whole share.";
   const cards = [];
 
   const meter = el("div", { class: "meter", role: "img", "aria-label": pct(s.inspected, s.total) + " inspected" },
@@ -364,7 +370,7 @@ function render(s) {
     el("p", { class: "sub", text: `${fmt(s.inspected)} of ${fmt(s.total)} units have the status "Inspection Complete".` })));
 
   const photoNote = info.photosReferenced ? `of ${fmt(info.photosReferenced)} in the share` : "";
-  cards.push(card("span-8", "Units", filtered ? "Counts for the selected filters. Photos are for the whole share." : "Counts for the whole share.",
+  cards.push(card("span-8", "Units", counted,
     el("div", { class: "tiles" },
       tile("Total units", fmt(s.total)),
       tile("Inspected", fmt(s.inspected), pct(s.inspected, s.total)),
@@ -418,6 +424,7 @@ async function start() {
   document.title += " · " + info.name;
 
   document.getElementById("dl-geojson-note").textContent = bytes(info.geojsonBytes);
+  fillSelect(selects.year, "All years (total)", info.options.years);
   fillSelect(selects.type, "All types", info.options.types);
   fillSelect(selects.county, "All counties", info.options.counties);
   fillSelect(selects.status, "All statuses", info.options.statuses);

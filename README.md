@@ -90,7 +90,7 @@ The page shows:
 - what the inspections found: exterior, clearance, penta bolt, lock, label and oil leak;
 - the units per month of their inspection date.
 
-Every figure can be narrowed to one inspection type, county or status with the filters at the top. The page is built into the command and loads nothing from the internet.
+Every figure can be narrowed to one year, inspection type, county or status with the filters at the top. The **Year** list offers the current year and the four before it, plus "All years (total)" for the overall view. A unit belongs to the year of its `updated_at` attribute, the last time its record was changed in Fulcrum, so each unit is counted in one year only. The page is built into the command and loads nothing from the internet.
 
 The **Download GeoJSON** button saves `<name>.geojson` to the computer the browser runs on.
 
