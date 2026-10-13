@@ -3,6 +3,7 @@
 
 # Build output
 /bin/
+/dist/
 
 # Downloaded and converted data
 /data/

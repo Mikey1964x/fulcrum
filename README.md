@@ -110,6 +110,24 @@ go vet ./...
 go test ./...
 ```
 
+### Release builds
+
+`scripts/build.sh` (bash) and `scripts\build.ps1` (PowerShell) build the command the way the release job does: a static binary without debug information, stamped with its version.
+
+``` bash
+scripts/build.sh                      # this machine's binary, into bin/
+scripts/build.sh --all                # windows, linux and macOS binaries plus SHA256SUMS, into dist/
+scripts/build.sh --version v1.2.3     # set the version reported by -version
+```
+
+``` powershell
+scripts\build.ps1
+scripts\build.ps1 -All
+scripts\build.ps1 -Version v1.2.3
+```
+
+Without a version, `git describe` supplies one, such as `v0.3.2` on a tagged commit or `v0.3.2-3-g1a2b3c4-dirty` after it.
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull request:

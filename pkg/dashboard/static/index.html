@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inspection dashboard</title>
+<title>Surface Equipment Inspections Dashboard</title>
 <style>
   :root {
     color-scheme: light;
@@ -415,7 +415,7 @@ async function start() {
   }
   const updated = new Date(info.updated).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
   document.getElementById("source").textContent = `Share ${info.name} · ${fmt(info.features)} units · downloaded ${updated}`;
-  document.title = "Inspection dashboard · " + info.name;
+  document.title += " · " + info.name;
 
   document.getElementById("dl-geojson-note").textContent = bytes(info.geojsonBytes);
   fillSelect(selects.type, "All types", info.options.types);
