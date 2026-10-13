@@ -1,6 +1,6 @@
 // Package dashboard serves a web page with the statistics of a downloaded
 // data share: how many units have been inspected, what the inspections found,
-// and links to download the GeoJSON with or without the photos.
+// and a link to download the GeoJSON.
 //
 // The statistics are computed by [Compute] from the features of the share.
 // A [Server] reads the GeoJSON that the fulcrum command saved and serves the

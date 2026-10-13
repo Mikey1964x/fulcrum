@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -193,7 +192,7 @@ func TestServerPageAndAPI(t *testing.T) {
 	if err := json.Unmarshal(body, &info); err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != "tok" || info.Features != 4 || info.PhotosReferenced != 2 || info.PhotosOnDisk != 1 || info.PhotoBytes != 9 {
+	if info.Name != "tok" || info.Features != 4 || info.PhotosReferenced != 2 || info.PhotosOnDisk != 1 {
 		t.Errorf("info = %+v", info)
 	}
 
@@ -226,37 +225,14 @@ func TestServerDownloads(t *testing.T) {
 	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="tok.geojson"` {
 		t.Errorf("geojson disposition = %q", cd)
 	}
-
-	resp, body = get(t, srv, "/download/zip")
-	if resp.StatusCode != 200 {
-		t.Fatalf("zip: status %d", resp.StatusCode)
-	}
-	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="tok-with-photos.zip"` {
-		t.Errorf("zip disposition = %q", cd)
-	}
-	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]string{}
-	for _, f := range zr.File {
-		rc, err := f.Open()
-		if err != nil {
-			t.Fatal(err)
-		}
-		data, _ := io.ReadAll(rc)
-		rc.Close()
-		got[f.Name] = string(data)
-	}
-	if len(got) != 2 || got["tok.geojson"] != string(want) || got["photos/"+photoA+".jpg"] != "picture a" {
-		t.Errorf("zip entries = %v", reflect.ValueOf(got).MapKeys())
-	}
 }
 
 func TestServerWithoutPhotosOrData(t *testing.T) {
 	srv, path := newServer(t, false)
-	if resp, _ := get(t, srv, "/download/zip"); resp.StatusCode != 404 {
-		t.Errorf("zip without photos: %d", resp.StatusCode)
+	var info Info
+	_, body := get(t, srv, "/api/info")
+	if err := json.Unmarshal(body, &info); err != nil || info.PhotosOnDisk != 0 || info.PhotosReferenced != 2 {
+		t.Errorf("info without photos = %+v, %v", info, err)
 	}
 
 	os.Remove(path)

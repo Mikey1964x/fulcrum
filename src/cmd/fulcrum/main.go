@@ -49,9 +49,8 @@
 // downloaded again, so an interrupted run can be repeated to fetch the rest.
 //
 // With -serve nothing is downloaded. The command instead serves a web page
-// with the statistics of the GeoJSON in the output directory, and links to
-// download that GeoJSON alone or in a zip archive with the photos. It runs
-// until interrupted.
+// with the statistics of the GeoJSON in the output directory, and a link to
+// download that GeoJSON. It runs until interrupted.
 //
 // Progress is reported on standard error and a summary on standard output.
 // The exit status is 0 on success and 1 on any error, including a photo that
@@ -318,7 +317,7 @@ func serveDashboard(ctx context.Context, cfg *config.Config, name, addr string) 
 		return err
 	}
 
-	// No write timeout: the zip download of the photos can take very long.
+	// No write timeout: the GeoJSON download can take long on a slow link.
 	srv := &http.Server{Addr: addr, Handler: dash.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()

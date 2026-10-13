@@ -92,14 +92,9 @@ The page shows:
 
 Every figure can be narrowed to one inspection type, county or status with the filters at the top. The page is built into the command and loads nothing from the internet.
 
-Two buttons download the data to the computer the browser runs on:
+The **Download GeoJSON** button saves `<name>.geojson` to the computer the browser runs on.
 
-| Button | Download |
-| --- | --- |
-| Download GeoJSON | `<name>.geojson` |
-| Download GeoJSON + photos (.zip) | A zip archive with `<name>.geojson` and the `photos` folder. It holds the photos downloaded so far and is as large as they are. |
-
-The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics and download the data and photos.
+The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics and download the data.
 
 ## Shapefile limits
 

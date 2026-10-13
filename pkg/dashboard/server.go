@@ -1,16 +1,13 @@
 package dashboard
 
 import (
-	"archive/zip"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -68,12 +65,10 @@ type Info struct {
 	// Features is the number of records in the share.
 	Features int `json:"features"`
 
-	// PhotosReferenced is the number of photos the records link to;
-	// PhotosOnDisk and PhotoBytes are the number and total size of those
-	// that have been downloaded.
-	PhotosReferenced int   `json:"photosReferenced"`
-	PhotosOnDisk     int   `json:"photosOnDisk"`
-	PhotoBytes       int64 `json:"photoBytes"`
+	// PhotosReferenced is the number of photos the records link to and
+	// PhotosOnDisk the number of those that have been downloaded.
+	PhotosReferenced int `json:"photosReferenced"`
+	PhotosOnDisk     int `json:"photosOnDisk"`
 
 	// Options lists the values the statistics can be filtered on.
 	Options Options `json:"options"`
@@ -86,14 +81,12 @@ type Info struct {
 //	GET /api/stats          a Stats as JSON; the query parameters type,
 //	                        county and status filter the records
 //	GET /download/geojson   the GeoJSON file
-//	GET /download/zip       a zip archive of the GeoJSON and the photos
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.servePage)
 	mux.HandleFunc("GET /api/info", s.serveInfo)
 	mux.HandleFunc("GET /api/stats", s.serveStats)
 	mux.HandleFunc("GET /download/geojson", s.serveGeoJSON)
-	mux.HandleFunc("GET /download/zip", s.serveZip)
 	return mux
 }
 
@@ -158,10 +151,7 @@ func (s *Server) serveInfo(w http.ResponseWriter, r *http.Request) {
 		Options:          s.options,
 	}
 	s.mu.Unlock()
-	for _, p := range s.photoFiles() {
-		info.PhotosOnDisk++
-		info.PhotoBytes += p.Size()
-	}
+	info.PhotosOnDisk = s.photoCount()
 	writeJSON(w, info)
 }
 
@@ -198,75 +188,21 @@ func (s *Server) serveGeoJSON(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", st.ModTime(), file)
 }
 
-// serveZip streams a zip archive holding the GeoJSON and, in a "photos"
-// folder, every downloaded photo. The archive is written as it is sent, so
-// its size is not known in advance. The photos are stored uncompressed,
-// since JPEG data does not compress.
-func (s *Server) serveZip(w http.ResponseWriter, r *http.Request) {
-	st, err := os.Stat(s.GeoJSONPath)
-	if err != nil {
-		http.Error(w, "the GeoJSON has not been downloaded yet", http.StatusNotFound)
-		return
-	}
-	pictures := s.photoFiles()
-	if len(pictures) == 0 {
-		http.Error(w, "no photos have been downloaded yet: run fulcrum -photos to fetch them", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", attachment(s.Name+"-with-photos.zip"))
-	zw := zip.NewWriter(w)
-	// Once the first byte is out the status cannot change, so a failure can
-	// only cut the download short; the browser then reports it as failed.
-	if err := addFile(zw, s.Name+".geojson", s.GeoJSONPath, st.ModTime(), zip.Deflate); err != nil {
-		return
-	}
-	for _, p := range pictures {
-		if r.Context().Err() != nil {
-			return
-		}
-		path := filepath.Join(s.PhotosDir, p.Name())
-		if err := addFile(zw, "photos/"+p.Name(), path, p.ModTime(), zip.Store); err != nil {
-			return
-		}
-	}
-	zw.Close()
-}
-
-// addFile copies the file at path into the archive under name.
-func addFile(zw *zip.Writer, name, path string, modified time.Time, method uint16) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	entry, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: method, Modified: modified})
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(entry, file)
-	return err
-}
-
-// photoFiles returns the downloaded photos in PhotosDir, in name order.
-// Unfinished downloads and subdirectories are left out. It returns nil if
+// photoCount returns the number of downloaded photos in PhotosDir.
+// Unfinished downloads and subdirectories are not counted. It returns 0 if
 // the directory does not exist.
-func (s *Server) photoFiles() []fs.FileInfo {
+func (s *Server) photoCount() int {
 	entries, err := os.ReadDir(s.PhotosDir)
 	if err != nil {
-		return nil
+		return 0
 	}
-	var out []fs.FileInfo
+	n := 0
 	for _, e := range entries {
-		if e.IsDir() || strings.HasSuffix(e.Name(), partSuffix) {
-			continue
-		}
-		if info, err := e.Info(); err == nil {
-			out = append(out, info)
+		if !e.IsDir() && !strings.HasSuffix(e.Name(), partSuffix) {
+			n++
 		}
 	}
-	return out
+	return n
 }
 
 // attachment returns a Content-Disposition value that makes the browser
