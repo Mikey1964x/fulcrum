@@ -180,7 +180,7 @@ func TestServerPageAndAPI(t *testing.T) {
 	srv, path := newServer(t, true)
 
 	resp, body := get(t, srv, "/")
-	if resp.StatusCode != 200 || !strings.Contains(string(body), "Inspection dashboard") {
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `id="grid"`) {
 		t.Errorf("page: %d", resp.StatusCode)
 	}
 	if resp, _ := get(t, srv, "/nothing"); resp.StatusCode != 404 {
