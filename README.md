@@ -24,7 +24,7 @@ Variables already set in the environment take precedence over `.env`.
 ## Usage
 
 ``` bash
-bin\fulcrum.exe [-env .env] [-out <dir>] [-name <basename>] [-keep-geojson=false] [-photos=false] [-photo-workers <n>]
+bin\fulcrum.exe [-env .env] [-out <dir>] [-name <basename>] [-keep-geojson=false] [-photos] [-photo-workers <n>]
 bin\fulcrum.exe -serve [-addr localhost:8080]
 bin\fulcrum.exe -help
 bin\fulcrum.exe -version
@@ -36,7 +36,7 @@ bin\fulcrum.exe -version
 | `-out` | `FULCRUM_OUTPUT_DIR` | Output directory. |
 | `-name` | share token | Base name of the output files. |
 | `-keep-geojson` | `true` | Also save the downloaded GeoJSON. |
-| `-photos` | `true` | Download the photos the records link to. |
+| `-photos` | off | Also download the photos the records link to. |
 | `-photo-workers` | `8` | Number of photos downloaded in parallel. |
 | `-serve` | | Serve the dashboard of the share already downloaded, instead of downloading it. |
 | `-addr` | `localhost:8080` | Address the dashboard listens on. |
@@ -56,7 +56,7 @@ For a share named `<name>`:
 | `<name>.cpg` | Text encoding of the table: UTF-8. |
 | `<name>_fields.csv` | Shapefile column name for every Fulcrum field. |
 | `<name>.geojson` | All pages of the download merged into one file. |
-| `photos/<guid>.jpg` | One file per photo, named after the photo's GUID. |
+| `photos/<guid>.jpg` | One file per photo, named after the photo's GUID. Only with `-photos`. |
 
 A shapefile holds one geometry type. If a share mixes types, one shapefile per type is written: `<name>_point`, `<name>_multipoint`, `<name>_line`, `<name>_polygon`. Records without a location are skipped and counted in the summary.
 
@@ -68,7 +68,7 @@ A photo field comes with an attribute whose name ends in `_url`, such as `xfmr_p
 https://web.fulcrumapp.com/shares/<token>/photos/view?photos=<guid>,<guid>
 ```
 
-The command reads the GUIDs from every such attribute and downloads each picture once from `https://web.fulcrumapp.com/shares/<token>/photos/<guid>` into the `photos` subdirectory of the output directory. No API token is needed: the share token in the link is the access control, as it is for the data.
+Photos are only downloaded when the command is run with `-photos`. It then reads the GUIDs from every such attribute and downloads each picture once from `https://web.fulcrumapp.com/shares/<token>/photos/<guid>` into the `photos` subdirectory of the output directory. No API token is needed: the share token in the link is the access control, as it is for the data.
 
 - **Reruns only fetch what is new.** A photo whose file is already in `photos` is skipped, so an interrupted run (Ctrl+C) can simply be started again.
 - **A large share takes a while and a lot of disk space.** Photos are roughly 350 KB each.

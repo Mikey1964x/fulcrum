@@ -16,7 +16,7 @@
 //	-keep-geojson
 //		Also save the downloaded GeoJSON (default true).
 //	-photos
-//		Download the photos the records link to (default true).
+//		Also download the photos the records link to.
 //	-photo-workers n
 //		Number of photos downloaded in parallel (default 8).
 //	-serve
@@ -43,10 +43,10 @@
 // to the Fulcrum field names. If the share mixes geometry types, one
 // shapefile per type is written.
 //
-// The photos linked from attributes whose name ends in "_url" are saved in
-// the "photos" subdirectory of the output directory, each named after its
-// GUID. Photos already there are not downloaded again, so an interrupted run
-// can be repeated to fetch the rest.
+// With -photos, the photos linked from attributes whose name ends in "_url"
+// are also downloaded and saved in the "photos" subdirectory of the output
+// directory, each named after its GUID. Photos already there are not
+// downloaded again, so an interrupted run can be repeated to fetch the rest.
 //
 // With -serve nothing is downloaded. The command instead serves a web page
 // with the statistics of the GeoJSON in the output directory, and links to
@@ -112,7 +112,7 @@ Flags:
   -out dir           output directory (default: FULCRUM_OUTPUT_DIR, or "data")
   -name basename     base name of the output files (default: the share token)
   -keep-geojson      also save the downloaded GeoJSON (default true)
-  -photos            download the photos the records link to (default true)
+  -photos            also download the photos the records link to
   -photo-workers n   number of photos downloaded in parallel (default 8)
   -serve             serve the dashboard of the share already downloaded,
                      instead of downloading it
@@ -120,7 +120,7 @@ Flags:
   -h, -help          print this usage and exit
   -v, -version       print the version and exit
 
-  Turn an on/off flag off with =false, for example -photos=false.
+  Turn an on/off flag off with =false, for example -keep-geojson=false.
 
 Settings, read from the environment and the .env file:
 
@@ -151,7 +151,7 @@ func run() error {
 	outDir := flag.String("out", "", "output directory (default: FULCRUM_OUTPUT_DIR or \"data\")")
 	name := flag.String("name", "", "base name of the output files (default: the share token)")
 	keepGeoJSON := flag.Bool("keep-geojson", true, "also save the downloaded GeoJSON")
-	getPhotos := flag.Bool("photos", true, "download the photos the records link to")
+	getPhotos := flag.Bool("photos", false, "also download the photos the records link to")
 	photoWorkers := flag.Int("photo-workers", 8, "number of photos downloaded in parallel")
 	serve := flag.Bool("serve", false, "serve the dashboard of the share already downloaded")
 	addr := flag.String("addr", "localhost:8080", "address the dashboard listens on")

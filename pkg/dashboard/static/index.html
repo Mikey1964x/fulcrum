@@ -429,7 +429,7 @@ async function start() {
   if (!info.photosOnDisk) {
     zip.setAttribute("aria-disabled", "true");
     zip.removeAttribute("href");
-    zipNote.textContent = "No photos downloaded yet. Run fulcrum to fetch them.";
+    zipNote.textContent = "No photos downloaded yet. Run fulcrum -photos to fetch them.";
   } else {
     const size = "about " + bytes(info.photoBytes + info.geojsonBytes / 16);
     zipNote.textContent = info.photosOnDisk < info.photosReferenced

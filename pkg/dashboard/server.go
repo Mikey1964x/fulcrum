@@ -210,7 +210,7 @@ func (s *Server) serveZip(w http.ResponseWriter, r *http.Request) {
 	}
 	pictures := s.photoFiles()
 	if len(pictures) == 0 {
-		http.Error(w, "no photos have been downloaded yet: run fulcrum without -serve to fetch them", http.StatusNotFound)
+		http.Error(w, "no photos have been downloaded yet: run fulcrum -photos to fetch them", http.StatusNotFound)
 		return
 	}
 
