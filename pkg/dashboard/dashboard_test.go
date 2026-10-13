@@ -163,7 +163,12 @@ func newServer(t *testing.T, withPhotos bool) (*httptest.Server, string) {
 		if i > 0 {
 			doc.WriteString(",")
 		}
-		doc.WriteString(`{"type":"Feature","properties":` + p + `,"geometry":null}`)
+		// Only the first unit has a location.
+		geometry := "null"
+		if i == 0 {
+			geometry = `{"type":"Point","coordinates":[-79.05,33.84]}`
+		}
+		doc.WriteString(`{"type":"Feature","properties":` + p + `,"geometry":` + geometry + `}`)
 	}
 	doc.WriteString("]}")
 	path := filepath.Join(dir, "tok.geojson")
@@ -239,6 +244,38 @@ func TestServerPageAndAPI(t *testing.T) {
 	json.Unmarshal(body, &info)
 	if info.Features != 0 {
 		t.Errorf("after rewrite: %d features", info.Features)
+	}
+}
+
+func TestServerMap(t *testing.T) {
+	srv, _ := newServer(t, false)
+
+	resp, body := get(t, srv, "/map")
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `id="map"`) {
+		t.Errorf("map page: %d", resp.StatusCode)
+	}
+	if _, body := get(t, srv, "/"); !strings.Contains(string(body), `href="/map"`) {
+		t.Error("the dashboard page does not link to the map")
+	}
+
+	// The layer holds only the units with a location, slimmed down.
+	_, body = get(t, srv, "/api/features")
+	want := `{"type":"FeatureCollection","features":[{"type":"Feature","id":0,` +
+		`"properties":{"c":"","s":"Inspection Complete"},` +
+		`"geometry":{"type":"Point","coordinates":[-79.05,33.84]}}]}`
+	if string(body) != want {
+		t.Errorf("layer = %s", body)
+	}
+
+	// A unit's properties come back whole and in their original order.
+	resp, body = get(t, srv, "/api/features/1")
+	if resp.StatusCode != 200 || string(body) != records[1] {
+		t.Errorf("feature 1: %d %s", resp.StatusCode, body)
+	}
+	for _, id := range []string{"4", "-1", "x"} {
+		if resp, _ := get(t, srv, "/api/features/"+id); resp.StatusCode != 404 {
+			t.Errorf("feature %q: %d", id, resp.StatusCode)
+		}
 	}
 }
 

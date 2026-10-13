@@ -51,6 +51,10 @@ type Server struct {
 	features []*geojson.Feature
 	options  Options
 	photoRef int
+
+	// layer is the GeoJSON the map draws and layerGzip the same, gzipped.
+	layer     []byte
+	layerGzip []byte
 }
 
 // Info describes the data behind the dashboard.
@@ -76,16 +80,23 @@ type Info struct {
 
 // Handler returns the handler serving the dashboard:
 //
-//	GET /                   the page
-//	GET /api/info           an Info as JSON
-//	GET /api/stats          a Stats as JSON; the query parameters type,
-//	                        county, status and year filter the records
-//	GET /download/geojson   the GeoJSON file
+//	GET /                    the page
+//	GET /map                 the map of the units
+//	GET /api/info            an Info as JSON
+//	GET /api/stats           a Stats as JSON; the query parameters type,
+//	                         county, status and year filter the records
+//	GET /api/features        the geometry, status and colour of every unit
+//	                         with a location, as GeoJSON for the map
+//	GET /api/features/{id}   every property of one unit as JSON
+//	GET /download/geojson    the GeoJSON file
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.servePage)
+	mux.HandleFunc("GET /map", s.serveMapPage)
 	mux.HandleFunc("GET /api/info", s.serveInfo)
 	mux.HandleFunc("GET /api/stats", s.serveStats)
+	mux.HandleFunc("GET /api/features", s.serveFeatures)
+	mux.HandleFunc("GET /api/features/{id}", s.serveFeature)
 	mux.HandleFunc("GET /download/geojson", s.serveGeoJSON)
 	return mux
 }
@@ -121,7 +132,12 @@ func (s *Server) Load() ([]*geojson.Feature, error) {
 		return nil, fmt.Errorf("reading %s: %w", s.GeoJSONPath, err)
 	}
 
+	layer, layerGzip, err := buildLayer(features)
+	if err != nil {
+		return nil, err
+	}
 	refs, _ := photos.Collect(features, s.ShareURL)
+	s.layer, s.layerGzip = layer, layerGzip
 	s.features, s.options, s.photoRef = features, ListOptions(features), len(refs)
 	s.modTime, s.size = st.ModTime(), st.Size()
 	return features, nil

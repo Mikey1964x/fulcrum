@@ -49,8 +49,8 @@
 // downloaded again, so an interrupted run can be repeated to fetch the rest.
 //
 // With -serve nothing is downloaded. The command instead serves a web page
-// with the statistics of the GeoJSON in the output directory, and a link to
-// download that GeoJSON. It runs until interrupted.
+// with the statistics of the GeoJSON in the output directory, a map of its
+// units and a link to download that GeoJSON. It runs until interrupted.
 //
 // Progress is reported on standard error and a summary on standard output.
 // The exit status is 0 on success and 1 on any error, including a photo that

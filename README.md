@@ -92,9 +92,11 @@ The page shows:
 
 Every figure can be narrowed to one year, inspection type, county or status with the filters at the top. The **Year** list offers the current year and the four before it, plus "All years (total)" for the overall view. A unit belongs to the year of its `updated_at` attribute, the last time its record was changed in Fulcrum, so each unit is counted in one year only. The page is built into the command and loads nothing from the internet.
 
+The **View map** button opens `/map`, which draws every unit that has a location, coloured by its `marker-color` attribute, with a legend of the statuses. Click a unit to see all its attributes. Unlike the dashboard page, the map needs internet access in the browser: it loads [Leaflet](https://leafletjs.com/) from unpkg and the base map tiles from OpenStreetMap.
+
 The **Download GeoJSON** button saves `<name>.geojson` to the computer the browser runs on.
 
-The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics and download the data.
+The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics, the map and every unit's attributes, and download the data.
 
 ### Running the dashboard as a Windows service
 

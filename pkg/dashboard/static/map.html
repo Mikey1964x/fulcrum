@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Surface Equipment Inspections Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+  html, body, #map { height: 100%; margin: 0; }
+  body { font: 13px/1.4 system-ui, "Segoe UI", sans-serif; }
+
+  #status {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 1000; padding: 6px 12px; border-radius: 4px;
+    background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4);
+  }
+  #status.error { background: #fde8e8; color: #9b1c1c; }
+
+  #back {
+    position: absolute; top: 10px; right: 10px; z-index: 1000;
+    padding: 6px 12px; border-radius: 4px; background: #fff; color: #222;
+    box-shadow: 0 1px 5px rgba(0,0,0,.4); font-weight: 600; text-decoration: none;
+  }
+  #back:hover { background: #f4f4f4; }
+
+  .legend {
+    padding: 8px 10px; border-radius: 4px; background: #fff;
+    box-shadow: 0 1px 5px rgba(0,0,0,.4); line-height: 1.6;
+  }
+  .legend h4 { margin: 0 0 4px; font-size: 13px; }
+  .legend i {
+    display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+    border-radius: 50%; border: 1px solid #333;
+  }
+  .legend .count { color: #666; margin-left: 4px; }
+
+  .attrs { border-collapse: collapse; width: 100%; }
+  .attrs th, .attrs td { padding: 2px 6px; text-align: left; vertical-align: top; }
+  .attrs th { font-weight: 600; white-space: nowrap; color: #444; }
+  .attrs td { word-break: break-word; }
+  .attrs tr:nth-child(odd) { background: #f4f4f4; }
+  .attrs tr.empty { display: none; }
+  .attrs tr.empty td { color: #999; }
+  .show-empty .attrs tr.empty { display: table-row; }
+  .popup-tools { margin-top: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<a id="back" href="/">&larr; Dashboard</a>
+<div id="status">Loading features…</div>
+<script>
+const DEFAULT_COLOR = '#3388ff';
+
+// Canvas rendering keeps tens of thousands of markers responsive.
+const map = L.map('map', { preferCanvas: true }).setView([0, 0], 2);
+
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+L.control.scale().addTo(map);
+
+const statusEl = document.getElementById('status');
+let showEmpty = false;
+
+function escapeHtml(v) {
+  return String(v).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function formatValue(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'object') return escapeHtml(JSON.stringify(v));
+  const s = String(v);
+  if (/^https?:\/\/\S+$/.test(s)) {
+    return `<a href="${escapeHtml(s)}" target="_blank" rel="noopener">${escapeHtml(s)}</a>`;
+  }
+  return escapeHtml(s);
+}
+
+function popupContent(props) {
+  let rows = '', empty = 0;
+  for (const [key, value] of Object.entries(props)) {
+    const html = formatValue(value);
+    if (html === '') empty++;
+    rows += `<tr${html === '' ? ' class="empty"' : ''}><th>${escapeHtml(key)}</th><td>${html || '&mdash;'}</td></tr>`;
+  }
+  const div = document.createElement('div');
+  div.classList.toggle('show-empty', showEmpty);
+  div.innerHTML = `<table class="attrs">${rows}</table>`;
+  if (empty > 0) {
+    const tools = document.createElement('div');
+    tools.className = 'popup-tools';
+    const link = document.createElement('a');
+    link.href = '#';
+    const label = () => showEmpty ? `Hide ${empty} empty attributes` : `Show ${empty} empty attributes`;
+    link.textContent = label();
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      showEmpty = !showEmpty;
+      div.classList.toggle('show-empty', showEmpty);
+      link.textContent = label();
+    });
+    tools.appendChild(link);
+    div.appendChild(tools);
+  }
+  return div;
+}
+
+const popup = L.popup({ maxWidth: 460, maxHeight: 380 });
+
+async function selectFeature(id, latlng) {
+  popup.setLatLng(latlng).setContent('Loading…').openOn(map);
+  try {
+    const res = await fetch(`/api/features/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    popup.setContent(popupContent(await res.json()));
+  } catch (err) {
+    popup.setContent(`Could not load attributes: ${escapeHtml(err.message)}`);
+  }
+}
+
+function style(feature) {
+  return {
+    radius: 5,
+    color: '#333',
+    weight: 1,
+    fillColor: feature.properties.c || DEFAULT_COLOR,
+    fillOpacity: 0.85
+  };
+}
+
+function addLegend(features) {
+  const groups = new Map();
+  for (const f of features) {
+    const name = (f.properties.s || '').trim() || 'Unknown';
+    const g = groups.get(name) || { color: f.properties.c || DEFAULT_COLOR, count: 0 };
+    g.count++;
+    groups.set(name, g);
+  }
+  if (groups.size < 2 || groups.size > 20) return;
+
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create('div', 'legend');
+    const sorted = [...groups].sort((a, b) => b[1].count - a[1].count);
+    div.innerHTML = '<h4>Status</h4>' + sorted.map(([name, g]) =>
+      `<div><i style="background:${escapeHtml(g.color)}"></i>${escapeHtml(name)}` +
+      `<span class="count">${g.count.toLocaleString()}</span></div>`).join('');
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  };
+  legend.addTo(map);
+}
+
+async function init() {
+  try {
+    const res = await fetch('/api/features');
+    if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+    const data = await res.json();
+
+    const layer = L.geoJSON(data, {
+      style,
+      pointToLayer: (feature, latlng) => L.circleMarker(latlng, style(feature)),
+      onEachFeature: (feature, lyr) => {
+        lyr.on('click', e => {
+          L.DomEvent.stopPropagation(e);
+          selectFeature(feature.id, e.latlng);
+        });
+      }
+    }).addTo(map);
+
+    const bounds = layer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+
+    addLegend(data.features);
+    statusEl.remove();
+  } catch (err) {
+    statusEl.textContent = `Failed to load features: ${err.message}`;
+    statusEl.classList.add('error');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
