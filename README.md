@@ -1,6 +1,6 @@
 # fulcrum
 
-Console command that downloads the GeoJSON of a [Fulcrum](https://www.fulcrumapp.com/) data share, converts it to an Esri shapefile and downloads the photos attached to its records.
+Console command that downloads the GeoJSON of a [Fulcrum](https://www.fulcrumapp.com/) data share, converts it to an Esri shapefile and downloads the photos attached to its records. It can also serve a dashboard website with the inspection statistics of the downloaded share.
 
 ## Setup
 
@@ -25,6 +25,7 @@ Variables already set in the environment take precedence over `.env`.
 
 ``` bash
 bin\fulcrum.exe [-env .env] [-out <dir>] [-name <basename>] [-keep-geojson=false] [-photos=false] [-photo-workers <n>]
+bin\fulcrum.exe -serve [-addr localhost:8080]
 bin\fulcrum.exe -help
 bin\fulcrum.exe -version
 ```
@@ -37,6 +38,8 @@ bin\fulcrum.exe -version
 | `-keep-geojson` | `true` | Also save the downloaded GeoJSON. |
 | `-photos` | `true` | Download the photos the records link to. |
 | `-photo-workers` | `8` | Number of photos downloaded in parallel. |
+| `-serve` | | Serve the dashboard of the share already downloaded, instead of downloading it. |
+| `-addr` | `localhost:8080` | Address the dashboard listens on. |
 | `-h`, `-help` | | Print the usage and exit. |
 | `-v`, `-version` | | Print the version and exit. |
 
@@ -71,6 +74,32 @@ The command reads the GUIDs from every such attribute and downloads each picture
 - **A large share takes a while and a lot of disk space.** Photos are roughly 350 KB each.
 - A photo that has been deleted in Fulcrum is counted as missing. A photo that fails to download is retried once, then counted as failed; the command finishes the others and exits with status 1.
 - `_url` values that are not photo links of the share's own site are not requested, and are counted in the summary.
+
+## Dashboard
+
+``` bash
+bin\fulcrum.exe -serve
+```
+
+starts a web server and prints its address, `http://localhost:8080`. Open that in a browser; stop the server with Ctrl+C. Nothing is downloaded from Fulcrum: the dashboard reads the `<name>.geojson` in the output directory, so run the command without `-serve` first. A later download is picked up without restarting the server.
+
+The page shows:
+
+- the share of units inspected, and the number inspected, not inspected and in any other status;
+- the units per status, and the progress per inspection type and per county;
+- what the inspections found: exterior, clearance, penta bolt, lock, label and oil leak;
+- the units per month of their inspection date.
+
+Every figure can be narrowed to one inspection type, county or status with the filters at the top. The page is built into the command and loads nothing from the internet.
+
+Two buttons download the data to the computer the browser runs on:
+
+| Button | Download |
+| --- | --- |
+| Download GeoJSON | `<name>.geojson` |
+| Download GeoJSON + photos (.zip) | A zip archive with `<name>.geojson` and the `photos` folder. It holds the photos downloaded so far and is as large as they are. |
+
+The server only accepts connections from the same computer. To let others on the network open the dashboard, start it with `-addr :8080`. It has no login, so anyone who can reach that port can see the statistics and download the data and photos.
 
 ## Shapefile limits
 

@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inspection dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;      /* inspected, and every single-series chart */
+    --series-2: #eb6834;      /* other status */
+    --rest: #d5d4cc;          /* not inspected: the remainder, de-emphasised */
+    --meter-track: #cde2fb;
+    --hover: rgba(11, 11, 11, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --rest: #4a4a46;
+      --meter-track: #0d366b;
+      --hover: rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 650; }
+  h2 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+  .sub { color: var(--ink-2); font-size: 13px; margin: 0; }
+  .note { color: var(--muted); font-size: 12px; margin: 0; }
+
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
+  .downloads { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  .downloads > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+  .button {
+    display: inline-block; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
+  }
+  .button:hover { background: var(--hover); }
+  .button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+  .button.primary:hover { filter: brightness(1.08); }
+  .button[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 20px 0 16px; }
+  .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  select {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 180px; max-width: 100%;
+  }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(12, 1fr); transition: opacity 0.15s; }
+  .grid.loading { opacity: 0.5; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; grid-column: span 12; min-width: 0;
+  }
+  .card > .sub { margin-bottom: 12px; }
+  @media (min-width: 900px) {
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+  }
+
+  /* Hero figure and meter */
+  .hero-value { font-size: 52px; font-weight: 650; line-height: 1.1; letter-spacing: -0.02em; }
+  .meter { height: 10px; border-radius: 5px; background: var(--meter-track); margin: 12px 0 8px; overflow: hidden; }
+  .meter > div { height: 100%; background: var(--series-1); border-radius: 0 5px 5px 0; }
+
+  /* Stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 24px; }
+  .tile-label { color: var(--ink-2); font-size: 13px; }
+  .tile-value { font-size: 26px; font-weight: 650; line-height: 1.2; }
+
+  /* Bar list: one row per category, value at the tip of the bar */
+  .bars { display: grid; grid-template-columns: minmax(90px, max-content) 1fr; gap: 6px 12px; align-items: center; }
+  .bars .label { color: var(--ink-2); overflow-wrap: anywhere; max-width: 230px; }
+  .bars .track { display: flex; align-items: center; gap: 8px; min-width: 0; border-radius: 4px; }
+  .bars .track:hover { background: var(--hover); }
+  .bars .bar { height: 14px; min-width: 2px; background: var(--series-1); border-radius: 0 4px 4px 0; flex: 0 0 auto; }
+  .bars .value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .bars .value small { color: var(--muted); font-size: 12px; }
+
+  /* Stacked share bars */
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; padding: 0; list-style: none; color: var(--ink-2); font-size: 13px; }
+  .legend li { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .stack-rows { display: grid; grid-template-columns: minmax(90px, max-content) 1fr max-content; gap: 8px 12px; align-items: center; }
+  .stack-rows .label { color: var(--ink-2); overflow-wrap: anywhere; max-width: 200px; }
+  .stack { display: flex; gap: 2px; height: 16px; }
+  .stack .seg { min-width: 3px; flex-basis: 0; }
+  .stack .seg:first-child { border-radius: 4px 0 0 4px; }
+  .stack .seg:last-child { border-radius: 0 4px 4px 0; }
+  .stack .seg:only-child { border-radius: 4px; }
+  .seg:hover, .seg:focus-visible, .col:hover > i, .col:focus-visible > i { filter: brightness(1.15); outline: none; }
+  .seg:focus-visible, .col:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .stack-rows .value { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+  .stack-rows .value small { color: var(--muted); font-size: 12px; }
+  .s-inspected { background: var(--series-1); }
+  .s-other { background: var(--series-2); }
+  .s-rest { background: var(--rest); }
+
+  /* Column chart of months */
+  .months { display: grid; grid-template-columns: max-content 1fr; column-gap: 8px; }
+  .yaxis { position: relative; height: 180px; width: 100%; min-width: 36px; }
+  .yaxis span { position: absolute; right: 0; transform: translateY(50%); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .plot { position: relative; height: 180px; border-bottom: 1px solid var(--axis); }
+  .plot .gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+  .cols { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+  .col { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; min-width: 0; }
+  .col > i { display: block; width: 100%; max-width: 24px; background: var(--series-1); border-radius: 4px 4px 0 0; }
+  .xaxis { grid-column: 2; display: flex; gap: 2px; height: 20px; }
+  .xaxis span { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: visible; color: var(--muted); font-size: 12px; padding-top: 4px; }
+
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+  table { border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { text-align: right; padding: 3px 12px 3px 0; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink-2); font-weight: 600; border-bottom: 1px solid var(--grid); }
+
+  #tip {
+    position: fixed; z-index: 10; pointer-events: none; display: none; max-width: 280px;
+    background: var(--ink); color: var(--surface); border-radius: 8px; padding: 6px 10px; font-size: 13px;
+  }
+  #tip b { display: block; font-size: 14px; }
+  #error { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Inspection dashboard</h1>
+      <p class="sub" id="source">Loading…</p>
+    </div>
+    <div class="downloads">
+      <div>
+        <a class="button" id="dl-geojson" href="/download/geojson">Download GeoJSON</a>
+        <p class="note" id="dl-geojson-note"></p>
+      </div>
+      <div>
+        <a class="button primary" id="dl-zip" href="/download/zip">Download GeoJSON + photos (.zip)</a>
+        <p class="note" id="dl-zip-note"></p>
+      </div>
+    </div>
+  </header>
+
+  <div id="error" role="alert"></div>
+
+  <div class="filters">
+    <label>Inspection type <select id="f-type"></select></label>
+    <label>County <select id="f-county"></select></label>
+    <label>Status <select id="f-status"></select></label>
+    <button class="button" id="reset" type="button">Show all</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</main>
+<div id="tip" role="status"></div>
+
+<script>
+"use strict";
+
+const fmt = n => n.toLocaleString("en-US");
+const pct = (n, total) => total ? (100 * n / total).toFixed(n && n * 200 < total ? 2 : 1) + "%" : "–";
+
+// el builds an element. Text always goes in through textContent, since the
+// labels come from the data.
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k === "style") node.style.cssText = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) if (c) node.append(c);
+  return node;
+}
+
+function bytes(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + " GB";
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + " MB";
+  return Math.max(1, Math.round(n / 1e3)) + " KB";
+}
+
+// ---- tooltip ---------------------------------------------------------
+
+const tip = document.getElementById("tip");
+function showTip(target, x, y) {
+  tip.replaceChildren(el("b", { text: target.dataset.value }), el("span", { text: target.dataset.label }));
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, Math.min(x + 14, innerWidth - w - 8)) + "px";
+  tip.style.top = (y + 18 + h > innerHeight ? y - h - 10 : y + 18) + "px";
+}
+function tipTarget(node, label, value) {
+  node.dataset.label = label;
+  node.dataset.value = value;
+  node.tabIndex = 0;
+  node.setAttribute("role", "img");
+  node.setAttribute("aria-label", label + ": " + value);
+  return node;
+}
+document.addEventListener("pointermove", e => {
+  const t = e.target.closest ? e.target.closest("[data-value]") : null;
+  if (t) showTip(t, e.clientX, e.clientY); else tip.style.display = "none";
+});
+document.addEventListener("focusin", e => {
+  if (e.target.dataset && e.target.dataset.value) {
+    const r = e.target.getBoundingClientRect();
+    showTip(e.target, r.left + r.width / 2, r.bottom - 12);
+  }
+});
+document.addEventListener("focusout", () => { tip.style.display = "none"; });
+
+// ---- chart builders --------------------------------------------------
+
+function card(span, title, subtitle, ...body) {
+  return el("section", { class: "card " + span },
+    el("h2", { text: title }), subtitle ? el("p", { class: "sub", text: subtitle }) : null, ...body);
+}
+
+// barList draws one horizontal bar per count, with the count and its share
+// of total at the tip. Every value is printed, so it needs no table view.
+function barList(counts, total) {
+  const max = Math.max(1, ...counts.map(c => c.count));
+  const box = el("div", { class: "bars" });
+  for (const c of counts) {
+    const value = el("span", { class: "value", text: fmt(c.count) + " " });
+    value.append(el("small", { text: pct(c.count, total) }));
+    box.append(
+      el("div", { class: "label", text: c.label }),
+      el("div", { class: "track" },
+        // The bar may take all but the room its value label needs.
+        el("div", { class: "bar", style: `width: calc((100% - 120px) * ${c.count / max})` }),
+        value));
+  }
+  return box;
+}
+
+const parts = [
+  ["inspected", "Inspected", "s-inspected"],
+  ["other", "Other status", "s-other"],
+  ["notInspected", "Not inspected", "s-rest"],
+];
+
+function legend() {
+  const ul = el("ul", { class: "legend" });
+  for (const [, name, cls] of parts) ul.append(el("li", null, el("span", { class: "swatch " + cls }), el("span", { text: name })));
+  return ul;
+}
+
+// stackRows draws, per group, one full-width bar divided by status, with
+// the share inspected and the group's size beside it.
+function stackRows(splits, heading) {
+  const rows = el("div", { class: "stack-rows" });
+  const table = el("table", null, el("tr", null,
+    el("th", { text: heading }), ...parts.map(p => el("th", { text: p[1] })), el("th", { text: "Total" })));
+  for (const s of splits) {
+    const stack = el("div", { class: "stack" });
+    for (const [key, name, cls] of parts) {
+      if (!s[key]) continue;
+      stack.append(tipTarget(el("div", { class: "seg " + cls, style: `flex-grow: ${s[key]}` }),
+        `${s.label} · ${name}`, `${fmt(s[key])} (${pct(s[key], s.total)})`));
+    }
+    const value = el("span", { class: "value", text: pct(s.inspected, s.total) + " " });
+    value.append(el("small", { text: "of " + fmt(s.total) }));
+    rows.append(el("div", { class: "label", text: s.label }), stack, value);
+    table.append(el("tr", null, el("td", { text: s.label }),
+      ...parts.map(p => el("td", { text: fmt(s[p[0]]) })), el("td", { text: fmt(s.total) })));
+  }
+  return [legend(), rows, el("details", null, el("summary", { text: "Show as table" }), table)];
+}
+
+// niceStep returns a round tick spacing giving about four ticks up to max.
+function niceStep(max) {
+  const raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1))));
+  for (const m of [1, 2, 5, 10]) if (raw <= m * mag) return m * mag;
+  return 10 * mag;
+}
+const compact = n => n >= 1000 ? (n / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K" : String(n);
+const monthName = m => new Date(m + "-15T00:00:00Z").toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+// monthColumns draws one column per month on a zero-based axis.
+function monthColumns(months) {
+  const max = Math.max(1, ...months.map(m => m.count));
+  const step = niceStep(max), top = Math.ceil(max / step) * step;
+  const yaxis = el("div", { class: "yaxis" }), plot = el("div", { class: "plot" });
+  for (let v = 0; v <= top; v += step) {
+    yaxis.append(el("span", { text: compact(v), style: `bottom: ${100 * v / top}%` }));
+    if (v) plot.append(el("div", { class: "gridline", style: `bottom: ${100 * v / top}%` }));
+  }
+  const cols = el("div", { class: "cols" }), xaxis = el("div", { class: "xaxis" });
+  const table = el("table", null, el("tr", null, el("th", { text: "Month" }), el("th", { text: "Units" })));
+  // Label each January; with only a few months, label them all.
+  const labelAll = months.length <= 12;
+  for (const m of months) {
+    const col = el("div", { class: "col" }, el("i", { style: `height: ${100 * m.count / top}%` }));
+    cols.append(tipTarget(col, monthName(m.label), fmt(m.count) + " units"));
+    const jan = m.label.endsWith("-01");
+    xaxis.append(el("span", { text: labelAll ? m.label.slice(2) : jan ? m.label.slice(0, 4) : "" }));
+    table.append(el("tr", null, el("td", { text: monthName(m.label) }), el("td", { text: fmt(m.count) })));
+  }
+  plot.append(cols);
+  return [el("div", { class: "months" }, yaxis, plot, xaxis),
+    el("details", null, el("summary", { text: "Show as table" }), table)];
+}
+
+// ---- page ------------------------------------------------------------
+
+const grid = document.getElementById("grid");
+const selects = { type: document.getElementById("f-type"), county: document.getElementById("f-county"), status: document.getElementById("f-status") };
+let info = null;
+
+function fail(message) {
+  const box = document.getElementById("error");
+  box.textContent = message;
+  box.style.display = "block";
+}
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+  return res.json();
+}
+
+function fillSelect(select, all, values) {
+  select.replaceChildren(el("option", { value: "", text: all }), ...values.map(v => el("option", { value: v, text: v })));
+}
+
+function tile(label, value, note) {
+  return el("div", null, el("div", { class: "tile-label", text: label }), el("div", { class: "tile-value", text: value }),
+    note ? el("div", { class: "note", text: note }) : null);
+}
+
+function render(s) {
+  const filtered = Object.values(selects).some(x => x.value);
+  const scope = filtered ? "of the selected units" : "of all units";
+  const cards = [];
+
+  const meter = el("div", { class: "meter", role: "img", "aria-label": pct(s.inspected, s.total) + " inspected" },
+    el("div", { style: `width: ${s.total ? 100 * s.inspected / s.total : 0}%` }));
+  cards.push(card("span-4", "Inspected", null,
+    el("div", { class: "hero-value", text: pct(s.inspected, s.total) }), meter,
+    el("p", { class: "sub", text: `${fmt(s.inspected)} of ${fmt(s.total)} units have the status "Inspection Complete".` })));
+
+  const photoNote = info.photosReferenced ? `of ${fmt(info.photosReferenced)} in the share` : "";
+  cards.push(card("span-8", "Units", filtered ? "Counts for the selected filters. Photos are for the whole share." : "Counts for the whole share.",
+    el("div", { class: "tiles" },
+      tile("Total units", fmt(s.total)),
+      tile("Inspected", fmt(s.inspected), pct(s.inspected, s.total)),
+      tile("Not inspected", fmt(s.notInspected), pct(s.notInspected, s.total)),
+      tile("Other status", fmt(s.other), pct(s.other, s.total)),
+      tile("Photos downloaded", fmt(info.photosOnDisk), photoNote))));
+
+  if (!s.total) {
+    cards.push(card("", "No units match these filters", "Choose different filters or press Show all."));
+    grid.replaceChildren(...cards);
+    return;
+  }
+
+  cards.push(card("span-6", "Status", "Units by record status, with the share " + scope + ".", barList(s.statuses, s.total)));
+  cards.push(card("span-6", "Progress by inspection type", "Share of each type's units by status.", ...stackRows(s.types, "Inspection type")));
+  cards.push(card("", "Progress by county", "Share of each county's units by status.", ...stackRows(s.counties, "County")));
+
+  for (const f of s.conditions) {
+    const blank = f.blank ? ` ${fmt(f.blank)} units have no value.` : "";
+    cards.push(card("span-6", f.title, `Share of the ${fmt(f.answered)} units with a value.${blank}`, barList(f.counts, f.answered)));
+  }
+
+  if (s.months.length) {
+    cards.push(card("", "Inspection date", "Units by the month of their recorded inspection date.", ...monthColumns(s.months)));
+  }
+  grid.replaceChildren(...cards);
+}
+
+async function refresh() {
+  grid.classList.add("loading");
+  try {
+    const q = new URLSearchParams();
+    for (const [k, select] of Object.entries(selects)) if (select.value) q.set(k, select.value);
+    render(await getJSON("/api/stats?" + q));
+  } catch (e) {
+    fail("Could not load the statistics: " + e.message);
+  }
+  grid.classList.remove("loading");
+}
+
+async function start() {
+  try {
+    info = await getJSON("/api/info");
+  } catch (e) {
+    document.getElementById("source").textContent = "";
+    fail("Could not load the data: " + e.message);
+    return;
+  }
+  const updated = new Date(info.updated).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  document.getElementById("source").textContent = `Share ${info.name} · ${fmt(info.features)} units · downloaded ${updated}`;
+  document.title = "Inspection dashboard · " + info.name;
+
+  document.getElementById("dl-geojson-note").textContent = bytes(info.geojsonBytes);
+  const zip = document.getElementById("dl-zip"), zipNote = document.getElementById("dl-zip-note");
+  if (!info.photosOnDisk) {
+    zip.setAttribute("aria-disabled", "true");
+    zip.removeAttribute("href");
+    zipNote.textContent = "No photos downloaded yet. Run fulcrum to fetch them.";
+  } else {
+    const size = "about " + bytes(info.photoBytes + info.geojsonBytes / 16);
+    zipNote.textContent = info.photosOnDisk < info.photosReferenced
+      ? `${size} · only ${fmt(info.photosOnDisk)} of ${fmt(info.photosReferenced)} photos are downloaded`
+      : `${size} · ${fmt(info.photosOnDisk)} photos`;
+  }
+
+  fillSelect(selects.type, "All types", info.options.types);
+  fillSelect(selects.county, "All counties", info.options.counties);
+  fillSelect(selects.status, "All statuses", info.options.statuses);
+  for (const select of Object.values(selects)) select.addEventListener("change", refresh);
+  document.getElementById("reset").addEventListener("click", () => {
+    for (const select of Object.values(selects)) select.value = "";
+    refresh();
+  });
+  refresh();
+}
+start();
+</script>
+</body>
+</html>

@@ -19,6 +19,11 @@
 //		Download the photos the records link to (default true).
 //	-photo-workers n
 //		Number of photos downloaded in parallel (default 8).
+//	-serve
+//		Serve the dashboard of the share already downloaded, instead of
+//		downloading it.
+//	-addr host:port
+//		Address the dashboard listens on (default "localhost:8080").
 //	-h, -help
 //		Print the usage and exit.
 //	-v, -version
@@ -43,6 +48,11 @@
 // GUID. Photos already there are not downloaded again, so an interrupted run
 // can be repeated to fetch the rest.
 //
+// With -serve nothing is downloaded. The command instead serves a web page
+// with the statistics of the GeoJSON in the output directory, and links to
+// download that GeoJSON alone or in a zip archive with the photos. It runs
+// until interrupted.
+//
 // Progress is reported on standard error and a summary on standard output.
 // The exit status is 0 on success and 1 on any error, including a photo that
 // could not be downloaded.
@@ -51,6 +61,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -60,9 +71,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/mikey1964x/fulcrum/pkg/config"
+	"github.com/mikey1964x/fulcrum/pkg/dashboard"
 	"github.com/mikey1964x/fulcrum/pkg/datashare"
 	"github.com/mikey1964x/fulcrum/pkg/photos"
 	"github.com/mikey1964x/fulcrum/pkg/shapefile"
@@ -101,6 +114,9 @@ Flags:
   -keep-geojson      also save the downloaded GeoJSON (default true)
   -photos            download the photos the records link to (default true)
   -photo-workers n   number of photos downloaded in parallel (default 8)
+  -serve             serve the dashboard of the share already downloaded,
+                     instead of downloading it
+  -addr host:port    address the dashboard listens on (default "localhost:8080")
   -h, -help          print this usage and exit
   -v, -version       print the version and exit
 
@@ -137,6 +153,8 @@ func run() error {
 	keepGeoJSON := flag.Bool("keep-geojson", true, "also save the downloaded GeoJSON")
 	getPhotos := flag.Bool("photos", true, "download the photos the records link to")
 	photoWorkers := flag.Int("photo-workers", 8, "number of photos downloaded in parallel")
+	serve := flag.Bool("serve", false, "serve the dashboard of the share already downloaded")
+	addr := flag.String("addr", "localhost:8080", "address the dashboard listens on")
 	var showHelp, showVersion bool
 	flag.BoolVar(&showHelp, "h", false, "print the usage and exit")
 	flag.BoolVar(&showHelp, "help", false, "print the usage and exit")
@@ -170,6 +188,10 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	if *serve {
+		return serveDashboard(ctx, cfg, *name, *addr)
+	}
 
 	client := &datashare.Client{
 		URL:      cfg.ShareURL,
@@ -278,4 +300,40 @@ func download(ctx context.Context, client *datashare.Client, path string, keep b
 		return nil, err
 	}
 	return result, w.Flush()
+}
+
+// serveDashboard serves the dashboard of the share saved under name in the
+// output directory, on addr, until ctx is done. It fails straight away if
+// the GeoJSON is missing or cannot be read.
+func serveDashboard(ctx context.Context, cfg *config.Config, name, addr string) error {
+	dash := &dashboard.Server{
+		Name:        name,
+		GeoJSONPath: filepath.Join(cfg.OutputDir, name+".geojson"),
+		PhotosDir:   filepath.Join(cfg.OutputDir, photosDir),
+		ShareURL:    cfg.ShareURL,
+	}
+	fmt.Fprintln(os.Stderr, "reading", dash.GeoJSONPath)
+	features, err := dash.Load()
+	if err != nil {
+		return err
+	}
+
+	// No write timeout: the zip download of the photos can take very long.
+	srv := &http.Server{Addr: addr, Handler: dash.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdownCtx)
+	}()
+
+	shown := addr
+	if strings.HasPrefix(shown, ":") {
+		shown = "localhost" + shown
+	}
+	fmt.Printf("Dashboard for %d features: http://%s (Ctrl+C to stop)\n", len(features), shown)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
