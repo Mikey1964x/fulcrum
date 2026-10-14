@@ -50,7 +50,7 @@
 </head>
 <body>
 <div id="map"></div>
-<a id="back" href="/">&larr; Dashboard</a>
+<a id="back" href="./">&larr; Dashboard</a>
 <div id="status">Loading features…</div>
 <script>
 const DEFAULT_COLOR = '#3388ff';
@@ -116,7 +116,7 @@ const popup = L.popup({ maxWidth: 460, maxHeight: 380 });
 async function selectFeature(id, latlng) {
   popup.setLatLng(latlng).setContent('Loading…').openOn(map);
   try {
-    const res = await fetch(`/api/features/${id}`);
+    const res = await fetch(`api/features/${id}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     popup.setContent(popupContent(await res.json()));
   } catch (err) {
@@ -160,7 +160,7 @@ function addLegend(features) {
 
 async function init() {
   try {
-    const res = await fetch('/api/features');
+    const res = await fetch('api/features');
     if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
     const data = await res.json();
 

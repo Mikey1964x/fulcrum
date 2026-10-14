@@ -157,10 +157,10 @@
     </div>
     <div class="downloads">
       <div>
-        <a class="button" href="/map">View map</a>
+        <a class="button" href="map">View map</a>
       </div>
       <div>
-        <a class="button" id="dl-geojson" href="/download/geojson">Download GeoJSON</a>
+        <a class="button" id="dl-geojson" href="download/geojson">Download GeoJSON</a>
         <p class="note" id="dl-geojson-note"></p>
       </div>
     </div>
@@ -407,7 +407,7 @@ async function refresh() {
   try {
     const q = new URLSearchParams();
     for (const [k, select] of Object.entries(selects)) if (select.value) q.set(k, select.value);
-    render(await getJSON("/api/stats?" + q));
+    render(await getJSON("api/stats?" + q));
   } catch (e) {
     fail("Could not load the statistics: " + e.message);
   }
@@ -416,7 +416,7 @@ async function refresh() {
 
 async function start() {
   try {
-    info = await getJSON("/api/info");
+    info = await getJSON("api/info");
   } catch (e) {
     document.getElementById("source").textContent = "";
     fail("Could not load the data: " + e.message);

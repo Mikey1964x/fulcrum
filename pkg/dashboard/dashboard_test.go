@@ -254,7 +254,7 @@ func TestServerMap(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(string(body), `id="map"`) {
 		t.Errorf("map page: %d", resp.StatusCode)
 	}
-	if _, body := get(t, srv, "/"); !strings.Contains(string(body), `href="/map"`) {
+	if _, body := get(t, srv, "/"); !strings.Contains(string(body), `href="map"`) {
 		t.Error("the dashboard page does not link to the map")
 	}
 
