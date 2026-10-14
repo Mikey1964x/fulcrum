@@ -22,7 +22,7 @@ var mapPage []byte
 // buildLayer returns the GeoJSON the map draws, plain and gzipped. The share
 // is large and mostly attributes, so the layer holds only the geometry of
 // each feature and the two properties that style it: "s", its status, and
-// "c", its marker colour. The id of a feature is its position in features,
+// "c", its marker color. The id of a feature is its position in features,
 // which serveFeature uses to look up the rest. Features without a geometry
 // are left out.
 func buildLayer(features []*geojson.Feature) (plain, gzipped []byte, err error) {

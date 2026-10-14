@@ -225,7 +225,7 @@ func keys(m map[string]int) []string {
 	return out
 }
 
-// Compute summarises the features that match filter.
+// Compute summaries the features that match filter.
 func Compute(features []*geojson.Feature, filter Filter) *Stats {
 	st := &Stats{}
 	statuses := map[string]int{}

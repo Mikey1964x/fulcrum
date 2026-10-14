@@ -30,7 +30,7 @@ func decode(t *testing.T, doc string) []*geojson.Feature {
 
 // TestDBFNames checks column naming on property names taken from a real
 // share: truncation, collision suffixes, case-insensitive uniqueness and
-// sanitising of characters a DBF name cannot hold.
+// sanitizing of characters a DBF name cannot hold.
 func TestDBFNames(t *testing.T) {
 	keys := []string{
 		"fulcrum_id", "xfmr_photo_caption", "xfmr_photo", "xfmr_photo_url",
